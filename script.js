@@ -234,12 +234,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentAnswer = text.replace(thinkMatch[0], '');
             if (thinkText.trim()) {
                 thinkContainer.style.display = 'block';
-                // During streaming, just show the raw text in a <pre> tag
                 thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
             }
         }
-        // During streaming, just show the raw text with a cursor
-        answerContent.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${currentAnswer}<span class="typing-cursor"></span></pre>`;
+        answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
@@ -250,12 +248,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const thinkText = thinkMatch[1];
             finalAnswer = text.replace(thinkMatch[0], '');
             thinkContainer.style.display = 'block';
-            // Final render for think content
             thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
         } else {
             thinkContainer.style.display = 'none';
         }
-        // Final render for answer content, now using marked.js
         answerContent.innerHTML = marked.parse(finalAnswer);
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
