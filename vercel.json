@@ -1,22 +1,7 @@
 {
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "api/_data/**"
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ],
   "crons": [
     {
-      "path": "/api/cron/reset",
+      "path": "/api/index",
       "schedule": "0 0 * * *"
     }
   ]

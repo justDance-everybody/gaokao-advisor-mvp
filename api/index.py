@@ -54,10 +54,27 @@ def prepare_prompt(user_data, enrollment_data):
     """
     return prompt
 
-@app.route('/api/handler', methods=['POST'])
+# Since Vercel routes /api/index to this file,
+# we can use a simple root route inside Flask.
+@app.route('/', methods=['POST'])
 def handler():
     # Ultimate error catching block to ensure we always get a detailed error
     try:
+        # Handle Vercel Cron Job execution
+        if 'X-Vercel-Cron-Secret' in request.headers:
+            secret = request.headers.get('X-Vercel-Cron-Secret')
+            if secret == os.environ.get('CRON_SECRET'):
+                try:
+                    kv = KV()
+                    kv.set(KV_KEY, 0)
+                    print("Cron job: Daily counter reset successfully.")
+                    return jsonify({"status": "OK", "message": "Counter reset."}), 200
+                except Exception as e:
+                    print(f"Cron job failed: {e}")
+                    return jsonify({"status": "Error", "message": "Cron job failed."}), 500
+            else:
+                return jsonify({"status": "Error", "message": "Unauthorized cron job."}), 401
+
         # 1. Parse User Data FIRST
         try:
             body = request.get_json(silent=True)
@@ -126,17 +143,6 @@ def handler():
             "error": "服务器发生未知致命错误。",
             "traceback": error_trace
         }), 500
-
-@app.route('/api/cron/reset', methods=['GET'])
-def reset_counter():
-    # ... (omitted for brevity, no changes here)
-    try:
-        kv = KV()
-        kv.set(KV_KEY, 0)
-        return jsonify({"message": "Counter reset successfully."}), 200
-    except Exception as e:
-        print(f"Cron job failed to reset counter: {e}")
-        return jsonify({"error": "Failed to reset counter."}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -70,7 +70,7 @@ def test_quota_available(MockOpenAI, MockKV, client, sample_user_data):
     MockOpenAI.return_value.chat.completions.create.return_value = mock_chat_completion
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 200
@@ -94,7 +94,7 @@ def test_quota_exhausted(MockKV, client, sample_user_data):
     mock_kv_instance.get.return_value = 1000 # The limit
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 429
@@ -113,7 +113,7 @@ def test_kv_database_error(MockKV, client, sample_user_data):
     mock_kv_instance.get.side_effect = Exception("Connection Error")
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 500
@@ -124,7 +124,7 @@ def test_kv_database_error(MockKV, client, sample_user_data):
 
 def test_bad_request_no_json(client):
     """Tests server response when POST request has no JSON body."""
-    response = client.post('/api/handler', data="this is not json")
+    response = client.post('/', data="this is not json")
     assert response.status_code == 400
     response_data = response.get_json()
     assert "error" in response_data
