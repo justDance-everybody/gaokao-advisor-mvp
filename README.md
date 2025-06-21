@@ -27,6 +27,7 @@
 2.  **配置环境变量**:
     *   将项目根目录下的 `.env.example` 文件复制一份，并重命名为 `.env`。
     *   打开 `.env` 文件，填入您的 **OpenAI 兼容服务的API密钥** (`OPENAI_API_KEY`) 和 **Base URL** (`OPENAI_API_BASE`)。
+    *   (可选) 您可以添加 `DAILY_LIMIT=200` 这样的行来设置每日的请求上限，默认为100。
 
 ### 一键启动
 
@@ -51,11 +52,8 @@
 
 ---
 
-## ⚙️ 项目结构
+## ⚙️ 每日限额功能
 
--   `app.py`: Flask主应用文件，包含所有后端逻辑和路由。
--   `Dockerfile`: 用于构建Web应用Docker镜像的说明文件。
--   `docker-compose.yml`: 用于一键编排和启动所有服务（Web应用+Redis）的配置文件。
--   `requirements.txt`: Python依赖列表。
--   `index.html`, `style.css`, `script.js`: 前端静态文件。
--   `_data/`: 存放招生数据的目录（注意：在`app.py`中，我们已将此目录的路径硬编码为`api/_data`，以保持与旧版兼容）。
+-   本项目已重新引入**每日请求限额**功能，通过Redis数据库进行计数。
+-   默认上限为**100次/天**。您可以通过在 `.env` 文件中设置 `DAILY_LIMIT` 变量来修改此值。
+-   **如何重置计数?** 由于我们现在是独立的Docker应用，计数器需要手动重置。您可以使用任何Redis客户端连接到 `localhost:6379`，然后执行 `SET daily_requests_count 0` 命令来清零。在生产环境中，通常会设置一个服务器级别的定时任务（Cron Job）来自动执行此操作。

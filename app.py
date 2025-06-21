@@ -3,6 +3,24 @@ import json
 import traceback
 from flask import Flask, request, jsonify, send_from_directory, Response
 from openai import OpenAI
+import redis
+
+# --- Configuration ---
+DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", 100)) # Allow configuring the limit
+KV_KEY = 'daily_requests_count'
+
+# --- Redis Connection ---
+try:
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+    kv = redis.from_url(redis_url, decode_responses=True)
+    kv.ping()
+    print("Successfully connected to Redis.")
+except redis.exceptions.ConnectionError as e:
+    print(f"--- REDIS CONNECTION FAILED ---")
+    print(f"Could not connect to Redis at {redis_url}.")
+    print("Please ensure Redis is running and the REDIS_URL is set correctly.")
+    print(f"Error: {e}")
+    kv = None # Set kv to None to indicate failure
 
 # Create a Flask app instance that serves static files from the root
 app = Flask(__name__, static_url_path='', static_folder='.')
@@ -68,6 +86,16 @@ def serve_static(path):
 def handler():
     # All request-related operations must happen here, outside the generator.
     try:
+        # --- Cost Control & Safety Check ---
+        if not kv:
+            return jsonify({"error": "数据库服务未连接，请检查服务器配置。"}), 500
+        
+        count = kv.get(KV_KEY)
+        count = int(count) if count else 0
+        if count >= DAILY_LIMIT:
+            return jsonify({"error": f"非常抱歉，今日的免费体验名额（{DAILY_LIMIT}次）已被抢完！请您明日再来。"}), 429
+
+        # --- Main Logic ---
         body = request.get_json(silent=True)
         if not body or 'userInput' not in body:
             return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
@@ -103,10 +131,13 @@ def handler():
                 stream=True
             )
 
+            # Increment counter only after a successful stream starts
+            if kv:
+                kv.incr(KV_KEY)
+
             for chunk in stream:
                 content = chunk.choices[0].delta.content
                 if content:
-                    # SSE format: event: message, data: <content>\n\n
                     yield f"event: message\ndata: {json.dumps(content)}\n\n"
             
             yield f"event: end\ndata: End of stream\n\n"

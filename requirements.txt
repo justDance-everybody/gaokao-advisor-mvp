@@ -3,4 +3,5 @@ openai
 pytest
 pytest-mock
 gunicorn
+redis
 gevent
