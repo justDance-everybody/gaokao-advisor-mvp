@@ -105,44 +105,72 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Main Handler Functions ---
     async function handleSubmit() {
-        showLoadingState();
-        try {
-            const userInput = await getUserInput();
-            if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
-                 showErrorState("输入内容不能为空，请填写或上传您的方案。");
-                 return;
-            }
+        const userInput = await getUserInput();
+        if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
+             showErrorState("输入内容不能为空，请填写或上传您的方案。");
+             return;
+        }
 
+        // Switch to report view immediately and clear old content
+        showReportState(""); 
+        reportContent.innerHTML = '<div class="typing-cursor"></div>'; // Show typing cursor
+        
+        let fullReport = "";
+        
+        try {
             const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
             });
 
-            const data = await response.json();
-
             if (!response.ok) {
-                let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
-                let backendMessage = data.error || JSON.stringify(data);
-                if (data.traceback) {
-                    backendMessage += `\n\n--- 后端堆栈跟踪 ---\n${data.traceback}`;
-                }
-                errorText += `\n后端信息: ${backendMessage}`;
-                throw new Error(errorText);
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
-            const reportHtml = marked.parse(data.report);
-            showReportState(reportHtml);
 
-        } catch (error) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('event: message')) {
+                        const data = line.substring(line.indexOf('data: ') + 6);
+                        try {
+                            const token = JSON.parse(data);
+                            fullReport += token;
+                            // Just update the text content for performance, no re-parsing markdown yet
+                            reportContent.textContent = fullReport; 
+                        } catch (e) {
+                            console.error("Failed to parse token:", data);
+                        }
+                    } else if (line.startsWith('event: end')) {
+                        // Stream finished, now parse the full markdown
+                        reportContent.innerHTML = marked.parse(fullReport);
+                        return; // Exit the loop
+                    } else if (line.startsWith('event: error')) {
+                        const data = line.substring(line.indexOf('data: ') + 6);
+                        try {
+                            const errorData = JSON.parse(data);
+                            showErrorState(JSON.stringify(errorData, null, 2));
+                        } catch(e) {
+                            showErrorState(data);
+                        }
+                        return; // Exit the loop
+                    }
+                }
+            }
+            // Final render in case the stream ends without an 'end' event
+            reportContent.innerHTML = marked.parse(fullReport);
+
+        } catch(error) {
             console.error("Submit/Fetch Error:", error);
-            let detailedErrorMessage = "网络请求失败！\n\n";
-            detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
-            detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
-            detailedErrorMessage += "--- 技术调试信息 ---\n";
-            detailedErrorMessage += `错误类型: ${error.name}\n`;
-            detailedErrorMessage += `错误信息: ${error.message}\n`;
-            showErrorState(detailedErrorMessage);
+            showErrorState(`网络请求失败: ${error.message}`);
         }
     }
 

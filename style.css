@@ -334,3 +334,21 @@ select {
 .autocomplete-suggestion.selected {
     background-color: #dbeafe;
 }
+/* --- Typing Cursor Effect --- */
+.typing-cursor {
+    display: inline-block;
+    width: 10px;
+    height: 1.2rem;
+    background-color: #333;
+    animation: blink 1s infinite;
+    margin-left: 5px;
+}
+
+@keyframes blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+}
