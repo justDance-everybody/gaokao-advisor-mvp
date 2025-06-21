@@ -31,13 +31,13 @@ body {
     display: flex; 
     flex-direction: row; 
     width: 100%;
-    max-width: 75rem; /* Increased max-width */
+    max-width: 75rem;
     height: 90vh;
     background: var(--bg-container-light); 
     border-radius: 1rem;
     overflow: hidden;
     backdrop-filter: blur(8px); 
-    box-shadow: 0 8px S30px rgba(0, 77, 82, 0.1); 
+    box-shadow: 0 8px 30px rgba(0, 77, 82, 0.1); 
     border: 1px solid rgba(255, 255, 255, 0.5);
     transition: all 0.3s ease-in-out;
 }
@@ -114,6 +114,9 @@ textarea { min-height: 80px; resize: vertical; }
     padding: 1.5rem;
     overflow-y: auto;
     line-height: 1.6;
+    /* Fix for text overflow */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .bot-message {
@@ -154,9 +157,39 @@ textarea { min-height: 80px; resize: vertical; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* --- Responsive Layout --- */
+/* Tablet and smaller desktops */
+@media (max-width: 1024px) {
+    .submission-area {
+        width: 45%;
+        min-width: 18rem;
+    }
+    .form-container {
+        padding: 1rem;
+    }
+}
+
+/* Mobile devices */
 @media (max-width: 768px) {
     body { padding: 0; }
     .container { flex-direction: column; height: 100vh; max-height: 100vh; border-radius: 0; }
-    .submission-area { width: 100%; height: auto; max-height: 50vh; border-right: none; border-bottom: 1px solid var(--border-color-light-subtle); }
-    .report-main-area { width: 100%; }
+    .submission-area { 
+        width: 100%; 
+        height: auto; 
+        max-height: 45vh; /* Slightly less height for better balance */
+        border-right: none; 
+        border-bottom: 1px solid var(--border-color-light-subtle); 
+    }
+    .report-main-area { 
+        width: 100%; 
+        flex-grow: 1;
+    }
+    .form-container {
+        padding: 0.75rem 1rem;
+    }
+    .form-group {
+        margin-bottom: 0.75rem;
+    }
+    textarea {
+        min-height: 60px;
+    }
 }
