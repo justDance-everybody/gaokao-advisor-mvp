@@ -1,0 +1,194 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f4f7f9;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#app {
+    width: 100%;
+    max-width: 680px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    padding: 2rem;
+}
+
+h1 {
+    font-size: 1.8rem;
+    color: #1a202c;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+p {
+    text-align: center;
+    color: #718096;
+    margin-bottom: 2rem;
+}
+
+.tab-container {
+    margin-bottom: 1.5rem;
+}
+
+.tab-nav {
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    font-size: 1rem;
+    color: #718096;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.tab-button.active {
+    color: #2b6cb0;
+    border-bottom-color: #2b6cb0;
+}
+
+.tab-content {
+    display: none;
+    padding: 20px 0;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+textarea, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+
+textarea {
+    min-height: 150px;
+    resize: vertical;
+}
+
+#submit-button, #share-button {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #fff;
+    background-color: #3182ce;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#submit-button:hover, #share-button:hover {
+    background-color: #2b6cb0;
+}
+
+#submit-button:disabled {
+    background-color: #a0aec0;
+    cursor: not-allowed;
+}
+
+#waiting-view, #error-view {
+    text-align: center;
+}
+
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#report-content {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 20px;
+    background-color: #fdfdff;
+    text-align: left;
+}
+
+#report-content h1, #report-content h2 {
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+#report-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+#report-content th, #report-content td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+#report-content th {
+    background-color: #f2f2f2;
+}
+
+#error-message {
+    color: #e53e3e;
+    background-color: #fff5f5;
+    border: 1px solid #fed7d7;
+    padding: 15px;
+    border-radius: 6px;
+}
+/* --- Responsive Design --- */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    #app {
+        padding: 1.5rem;
+        box-shadow: none;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 480px) {
+    #app {
+        padding: 1rem;
+    }
+
+    .tab-button {
+        padding: 10px;
+        font-size: 0.9rem;
+    }
+
+    #submit-button, #share-button {
+        padding: 12px;
+        font-size: 1rem;
+    }
+}

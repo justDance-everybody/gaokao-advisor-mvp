@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高考志愿AI决策顾问</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="app">
+        <!-- 视图一：信息提交页 -->
+        <div id="submission-view">
+            <h1>临门一脚还在纠结？</h1>
+            <p>免费获取您的专属AI志愿分析报告</p>
+            <div class="tab-container">
+                <div class="tab-nav">
+                    <button class="tab-button active" data-tab="paste">直接粘贴笔记</button>
+                    <button class="tab-button" data-tab="upload">上传文档</button>
+                    <button class="tab-button" data-tab="fill">快速填写</button>
+                </div>
+                <div id="paste" class="tab-content active">
+                    <textarea id="raw-text-input" placeholder="请将您纠结的几个方案、您的分数位次、以及您的困惑，全部粘贴在这里。格式不限，越详细越好。"></textarea>
+                </div>
+                <div id="upload" class="tab-content">
+                    <input type="file" id="file-input" accept=".doc,.docx,.txt,.jpg,.png,.excel">
+                    <p id="file-name-display"></p>
+                </div>
+                <div id="fill" class="tab-content">
+                    <input type="text" id="province-input" placeholder="省份 (例如：广东)">
+                    <input type="text" id="stream-input" placeholder="科类 (例如：物理类)">
+                    <input type="number" id="rank-input" placeholder="高考分数/位次">
+                    <textarea id="options-input" placeholder="方案A vs 方案B..."></textarea>
+                    <textarea id="dilemma-input" placeholder="我的主要困惑是..."></textarea>
+                </div>
+            </div>
+            <button id="submit-button">立即生成我的分析报告</button>
+        </div>
+
+        <!-- 视图二：等待页 -->
+        <div id="waiting-view" style="display: none;">
+            <div class="loader"></div>
+            <p>我们已收到您的信息，强大的AI决策顾问正在为您进行多维度分析，并结合2025年最新招生数据进行演算。预计需要30-60秒，请您耐心等待...</p>
+        </div>
+
+        <!-- 视图三：AI分析报告展示页 -->
+        <div id="report-view" style="display: none;">
+            <h1>您的专属AI决策顾问分析报告</h1>
+            <div id="report-content"></div>
+            <button id="share-button">分享给朋友</button>
+        </div>
+
+        <!-- 视图四：异常与限制状态页 -->
+        <div id="error-view" style="display: none;">
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
