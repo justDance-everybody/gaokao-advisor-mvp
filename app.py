@@ -6,31 +6,28 @@ from openai import OpenAI
 import redis
 
 # --- Configuration ---
-DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", 100)) # Allow configuring the limit
+DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", 100))
 KV_KEY = 'daily_requests_count'
 
 # --- Redis Connection ---
+kv = None
 try:
     redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
     kv = redis.from_url(redis_url, decode_responses=True)
     kv.ping()
     print("Successfully connected to Redis.")
 except redis.exceptions.ConnectionError as e:
-    print(f"--- REDIS CONNECTION FAILED ---")
-    print(f"Could not connect to Redis at {redis_url}.")
-    print("Please ensure Redis is running and the REDIS_URL is set correctly.")
-    print(f"Error: {e}")
-    kv = None # Set kv to None to indicate failure
+    print(f"--- REDIS CONNECTION FAILED: {e} ---")
+    # Set kv to None to indicate failure, will be handled gracefully.
 
-# Create a Flask app instance that serves static files from the root
 app = Flask(__name__, static_url_path='', static_folder='.')
 
 def prepare_prompt(user_data, enrollment_data):
+    # ... (omitted for brevity, no changes here)
     user_info = user_data.get('rawText', '')
     province = user_data.get('province', '未知')
     rank = user_data.get('rank', '未知')
     enrollment_info = json.dumps(enrollment_data.get('data', {}), ensure_ascii=False, indent=2)
-    # Add instructions for the <think> tag
     prompt = f"""
     你是一位顶级的、资深的、充满智慧的高考志愿填报专家。你的任务是为一位正在纠结中的高三学生或家长，提供一份专业、客观、有深度、有温度的志愿对比分析报告。
 
@@ -84,18 +81,21 @@ def serve_static(path):
 # --- API Route ---
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    # All request-related operations must happen here, outside the generator.
+    # --- Cost Control & Safety Check ---
+    current_usage = 0
+    if kv:
+        try:
+            current_usage = int(kv.get(KV_KEY) or 0)
+            if current_usage >= DAILY_LIMIT:
+                error_msg = {"error": f"非常抱歉，今日的免费体验名额（{DAILY_LIMIT}次）已被抢完！请您明日再来。"}
+                # Return usage data even on error
+                return jsonify({**error_msg, "usage": {"used": current_usage, "limit": DAILY_LIMIT}}), 429
+        except redis.exceptions.ConnectionError:
+            # Handle case where connection is lost after initial check
+            return jsonify({"error": "数据库连接丢失，请联系管理员。"}), 500
+    
+    # --- Main Logic ---
     try:
-        # --- Cost Control & Safety Check ---
-        if not kv:
-            return jsonify({"error": "数据库服务未连接，请检查服务器配置。"}), 500
-        
-        count = kv.get(KV_KEY)
-        count = int(count) if count else 0
-        if count >= DAILY_LIMIT:
-            return jsonify({"error": f"非常抱歉，今日的免费体验名额（{DAILY_LIMIT}次）已被抢完！请您明日再来。"}), 429
-
-        # --- Main Logic ---
         body = request.get_json(silent=True)
         if not body or 'userInput' not in body:
             return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
@@ -115,7 +115,13 @@ def handler():
         return jsonify({"error": f"服务器在准备请求时发生错误: {e}"}), 500
 
     def stream_response(p):
+        # This generator function now only handles the AI call and streaming.
         try:
+            # Increment counter only after a successful stream starts
+            if kv:
+                new_usage = kv.incr(KV_KEY)
+                yield f"event: usage\ndata: {json.dumps({'used': new_usage, 'limit': DAILY_LIMIT})}\n\n"
+
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
@@ -131,10 +137,6 @@ def handler():
                 stream=True
             )
 
-            # Increment counter only after a successful stream starts
-            if kv:
-                kv.incr(KV_KEY)
-
             for chunk in stream:
                 content = chunk.choices[0].delta.content
                 if content:
@@ -145,10 +147,7 @@ def handler():
         except Exception as e:
             error_trace = traceback.format_exc()
             print(f"UNHANDLED EXCEPTION IN STREAM: {error_trace}")
-            error_message = {
-                "error": f"服务器在与AI通信时发生错误: {e}",
-                "traceback": error_trace
-            }
+            error_message = { "error": f"服务器在与AI通信时发生错误: {e}", "traceback": error_trace }
             yield f"event: error\ndata: {json.dumps(error_message)}\n\n"
 
     return Response(stream_response(prompt), mimetype='text/event-stream')

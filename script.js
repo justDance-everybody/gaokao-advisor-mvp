@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rankSlider = document.getElementById('rank-slider');
     const rankSliderValue = document.getElementById('rank-slider-value');
     const scoreTypeGroup = document.getElementById('score-type-group');
+    const usageStats = document.getElementById('usage-stats');
 
     // --- Event Listeners ---
     submitButton.addEventListener('click', handleSubmit);
@@ -93,15 +94,9 @@ document.addEventListener('DOMContentLoaded', async () => {
              return;
         }
 
-        // Create a new message container for this request
         const botMessageDiv = createBotMessage();
         const { thinkContainer, thinkContent, answerContent, toggleThink } = botMessageDiv;
         
-        let fullReport = "";
-        let inThinkBlock = false;
-        let thinkText = "";
-        let answerText = "";
-
         submitButton.disabled = true;
 
         try {
@@ -111,35 +106,52 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ userInput })
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            // Handle non-streaming errors first (e.g., quota exceeded)
+            if (response.headers.get("Content-Type") !== "text/event-stream") {
+                const errorData = await response.json();
+                if (errorData.usage) {
+                    updateUsage(errorData.usage);
+                }
+                answerContent.innerHTML = `<pre style="color:red;">${errorData.error}</pre>`;
+                submitButton.disabled = false;
+                return;
             }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = '';
+            let fullReport = "";
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n\n');
+                buffer += decoder.decode(value, { stream: true });
+                
+                let boundary = buffer.indexOf('\n\n');
+                while (boundary !== -1) {
+                    const message = buffer.substring(0, boundary);
+                    buffer = buffer.substring(boundary + 2);
 
-                for (const line of lines) {
-                    if (line.startsWith('event: message')) {
-                        const data = line.substring(line.indexOf('data: ') + 6);
+                    if (message.startsWith('event: message')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
                         try {
                             const token = JSON.parse(data);
                             fullReport += token;
-                        } catch (e) {
-                            console.error("Failed to parse token:", data);
-                        }
-                    } else if (line.startsWith('event: end')) {
-                        processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent, toggleThink);
+                            renderLive(fullReport, thinkContainer, thinkContent, answerContent);
+                        } catch (e) { console.error("Failed to parse token:", data); }
+                    } else if (message.startsWith('event: usage')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
+                        try {
+                            const usageData = JSON.parse(data);
+                            updateUsage(usageData);
+                        } catch (e) { console.error("Failed to parse usage data:", data); }
+                    } else if (message.startsWith('event: end')) {
+                        processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent);
                         submitButton.disabled = false;
                         return; 
-                    } else if (line.startsWith('event: error')) {
-                        const data = line.substring(line.indexOf('data: ') + 6);
+                    } else if (message.startsWith('event: error')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
                         try {
                             const errorData = JSON.parse(data);
                             answerContent.innerHTML = `<pre style="color:red;">${JSON.stringify(errorData, null, 2)}</pre>`;
@@ -149,12 +161,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         submitButton.disabled = false;
                         return; 
                     }
+                    boundary = buffer.indexOf('\n\n');
                 }
-                // Live rendering during streaming
-                renderLive(fullReport, thinkContainer, thinkContent, answerContent);
             }
-            // Final render in case stream ends without 'end' event
-            processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent, toggleThink);
+            processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent);
 
         } catch(error) {
             console.error("Submit/Fetch Error:", error);
@@ -167,30 +177,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     function createBotMessage() {
         const botMessageDiv = document.createElement('div');
         botMessageDiv.className = 'bot-message';
-
         const thinkContainer = document.createElement('div');
         thinkContainer.className = 'think-container';
-        thinkContainer.style.display = 'none'; // Hide by default
-
+        thinkContainer.style.display = 'none';
         const toggleThink = document.createElement('div');
         toggleThink.className = 'toggle-think';
         toggleThink.innerHTML = '展开AI思考过程 <i class="fas fa-chevron-down"></i>';
-        
         const thinkContent = document.createElement('div');
         thinkContent.className = 'think-content';
-
         thinkContainer.appendChild(toggleThink);
         thinkContainer.appendChild(thinkContent);
-
         const answerContent = document.createElement('div');
         answerContent.className = 'answer-content markdown-content';
-
         botMessageDiv.appendChild(thinkContainer);
         botMessageDiv.appendChild(answerContent);
-        
         reportContainer.appendChild(botMessageDiv);
         reportContainer.scrollTop = reportContainer.scrollHeight;
-
         toggleThink.addEventListener('click', () => {
             thinkContent.classList.toggle('expanded');
             toggleThink.classList.toggle('expanded');
@@ -198,29 +200,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? '收起AI思考过程 <i class="fas fa-chevron-down"></i>'
                 : '展开AI思考过程 <i class="fas fa-chevron-down"></i>';
         });
-
         return { thinkContainer, thinkContent, answerContent, toggleThink };
     }
 
     function renderLive(text, thinkContainer, thinkContent, answerContent) {
         const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
         let currentAnswer = text;
-
         if (thinkMatch) {
             const thinkText = thinkMatch[1];
             currentAnswer = text.replace(thinkMatch[0], '');
             thinkContainer.style.display = 'block';
             thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
         }
-        
         answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
-    function processAndRenderFinalReport(text, thinkContainer, thinkContent, answerContent, toggleThink) {
+    function processAndRenderFinalReport(text, thinkContainer, thinkContent, answerContent) {
         const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
         let finalAnswer = text;
-
         if (thinkMatch && thinkMatch[1].trim()) {
             const thinkText = thinkMatch[1];
             finalAnswer = text.replace(thinkMatch[0], '');
@@ -229,9 +227,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             thinkContainer.style.display = 'none';
         }
-        
         answerContent.innerHTML = marked.parse(finalAnswer);
         reportContainer.scrollTop = reportContainer.scrollHeight;
+    }
+
+    function updateUsage(usage) {
+        if (usage && usage.used !== undefined && usage.limit !== undefined) {
+            usageStats.textContent = `今日用量: ${usage.used} / ${usage.limit}`;
+        }
     }
 
     // --- Data Gathering ---
