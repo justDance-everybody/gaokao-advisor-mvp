@@ -1,133 +1,113 @@
-# 高考志愿AI决策顾问 (Docker版) 🚀
+# 高考志愿AI决策顾问 🚀
 
-本项目是一个移动端优先的H5单页应用，旨在为面临高考志愿填报最后抉择的考生及家长，提供一份由AI驱动的、结合了最新招生计划的深度分析报告。
-
-本版本已重构为统一的Flask Web应用，并可通过Docker进行容器化部署。
+本项目是一个移动端优先的H5单页应用，旨在为面临高考志愿填报最后抉择的考生及家长，提供一份由AI驱动的、结合了最新招生计划的深度分析报告。应用通过简洁的界面收集用户的基本信息和困惑，调用大语言模型进行智能分析，并以流式打字机的效果实时展示结果，最后支持将报告保存为PDF。
 
 ---
 
-## 🎯 核心技术栈
+## ✨ 功能特性
 
-- **Web框架:** Flask
-- **前端:** 原生 JavaScript (ES6+), HTML5, CSS3
-- **AI模型:** 兼容OpenAI的API (如 Kimi, Moonshot, DeepSeek 等)
-- **数据库:** Redis (用于成本控制)
-- **容器化:** Docker / Docker Compose
-- **测试框架:** Pytest (配合 pytest-mock)
+- **智能分析报告**:
+  - **个性化输入**: 用户可以输入省份、科类、分数/位次，以及最纠结的几个志愿方案和主要困惑。
+  - **动态数据结合**: AI会将用户的输入与预置的最新招生计划数据（`_data/enrollment_data_2025.json`）相结合进行分析。
+  - **深度思考过程**: 在生成报告前，AI会先输出一段被折叠的“思考过程”，展示其分析逻辑，供专业用户参考。
+  - **多维度PK记分卡**: 报告的核心是一个Markdown表格，从录取概率、学校实力、专业前景、城市发展等多个维度对用户的方案进行打分和对比。
+  - **对话式解读**: 报告采用亲切的对话式口吻，对记分卡的每一项进行详细解读，并提供最终的总结建议。
 
----
+- **流畅的用户体验**:
+  - **流式响应 (SSE)**: 后端通过Server-Sent Events技术，将AI生成的内容以“打字机”效果逐字显示在前端，避免了长时间的等待。
+  - **Markdown实时渲染**: 使用 **Marked.js** 将AI返回的Markdown格式报告实时渲染为格式优美的HTML。
+  - **便捷的交互组件**:
+    - **自动补全**: 在输入纠结方案时，提供基于招生数据的学校和专业名称自动补全。
+    - **滑块输入**: 分数和位次可以通过拖动滑块或直接输入数字来设定。
+    - **标签点选**: “主要困惑”部分提供了常用标签，点击即可快速输入。
+  - **移动端优先**:
+    - **响应式布局**: 界面在桌面端和移动端均有良好表现。
+    - **可折叠区域**: 在手机等小屏幕设备上，信息输入区会自动变为可折叠的面板，以节省宝贵的垂直空间。
 
-## ⚙️ 技术实现细节
-
-- **后端 (`app.py`)**:
-  - 使用 **Flask** 作为Web服务器。
-  - `/api/handler` 端点通过 **Server-Sent Events (SSE)** 实现流式响应，允许AI逐字生成内容，提升用户体验。
-  - `/api/usage` 端点用于在页面加载时获取当前用量。
-  - 使用官方 **OpenAI SDK** 与AI模型进行交互。
-  - 通过 **Redis** 缓存实现每日API请求计数，用于成本控制。
-  - **Gunicorn** (配合 `gevent` worker) 作为生产环境的WSGI服务器，以支持高并发和流式I/O。
-
-- **前端 (`script.js`)**:
-  - 使用原生JavaScript和 **Fetch API** 的 `ReadableStream` 来消费后端的SSE流，实现打字机效果。
-  - 集成 **Marked.js** 将AI返回的Markdown格式报告实时渲染为HTML。
-  - 集成 **jsPDF** 和 **html2canvas** 实现将最终报告导出为PDF的功能。
-  - 为提升用户体验，添加了学校/专业名称的**自动补全**、交互式**滑块输入**以及**标签点选**等功能。
-  - **移动端适配**: 在小屏幕设备上，通过CSS和JavaScript实现输入区和报告区的**可折叠布局**，优化垂直空间的使用。
-
-- **容器化 (`Dockerfile` & `docker-compose.yml`)**:
-  - `Dockerfile` 定义了应用的生产环境，安装Python依赖，并设置Gunicorn为启动命令。
-  - `docker-compose.yml` 编排了 `web` (Flask应用) 和 `redis` 两个服务，实现了“一键启动”的开发和部署体验。
+- **实用工具**:
+  - **保存为PDF**: 用户可以将生成的完整分析报告一键保存为PDF文件，方便离线查看和分享。
+  - **成本控制**: 内置基于Redis的每日API请求次数限制功能，可有效控制AI模型的使用成本。
 
 ---
 
-## 🚀 启动项目 (傻瓜版教程) 🐳
+## 🛠️ 技术栈
 
-现在，启动整个项目（包括Web应用和数据库）只需要一个命令！
+本项目采用前后端分离但统一仓库的模式，通过Docker进行容器化部署。
 
-### 前提条件
+- **后端 (Backend)**
+  - **Web框架**: **Flask** - 一个轻量级的Python Web框架，用于处理API请求和提供静态文件。
+  - **WSGI服务器**: **Gunicorn** - 在生产环境中用于运行Flask应用，配合`gevent`协程worker，高效处理并发和流式I/O。
+  - **AI模型**: **OpenAI SDK** - 官方提供的Python库，用于与兼容OpenAI API标准的大语言模型（如Kimi, Moonshot, DeepSeek等）进行交互。
+  - **数据库**: **Redis** - 一个高性能的内存键值数据库，在此项目中用于实现API的每日请求计数器。
 
-1.  **安装 Docker Desktop**:
-    *   请从 [Docker官网](https://www.docker.com/products/docker-desktop/) 下载并安装适用于您操作系统（Windows/macOS/Linux）的Docker Desktop。这是唯一需要安装的软件。
+- **前端 (Frontend)**
+  - **核心语言**: **原生 JavaScript (ES6+)**, **HTML5**, **CSS3** - 未使用任何重型前端框架，保持轻量和高效。
+  - **核心API**: **Fetch API** & **ReadableStream** - 用于与后端建立SSE连接并实时读取流式数据。
+  - **辅助库**:
+    - **Marked.js**: 用于将Markdown文本解析并渲染为HTML。
+    - **jsPDF** & **html2canvas**: 用于将HTML报告内容转换为PDF文档。
+    - **autoComplete.js**: 一个轻量级的自动补全库。
+
+- **开发与部署 (DevOps)**
+  - **容器化**: **Docker** & **Docker Compose** - 用于创建标准化的应用运行环境，并一键编排Web应用和Redis数据库的启动、连接和关闭。
+  - **测试**: **Pytest** - 一个功能强大且易于使用的Python测试框架，用于后端的单元测试和集成测试。
+    - **Pytest-mock**: `pytest`的插件，用于在测试中模拟（mock）外部依赖（如Redis、OpenAI API）。
+
+---
+
+## 📂 项目结构
+
+```
+.
+├── _data/
+│   └── enrollment_data_2025.json  # 预置的招生计划数据
+├── tests/
+│   └── test_app.py                # 后端自动化测试用例
+├── .env.example                   # 环境变量配置模板
+├── .gitignore
+├── app.py                         # Flask后端主程序
+├── docker-compose.yml             # Docker Compose编排文件
+├── Dockerfile                     # 应用的Docker镜像定义文件
+├── index.html                     # 主页面HTML
+├── pytest.ini                     # Pytest配置文件
+├── README.md                      # 就是你正在看的这个文件
+├── requirements.txt               # Python依赖列表
+├── script.js                      # 前端核心逻辑
+└── style.css                      # 页面样式
+```
+
+---
+
+## 🚀 如何启动
+
+### 前提
+1.  **安装 Docker Desktop**: 从 [Docker官网](https://www.docker.com/products/docker-desktop/) 下载并安装。
 2.  **配置环境变量**:
-    *   将项目根目录下的 `.env.example` 文件复制一份，并重命名为 `.env`。
-    *   打开 `.env` 文件，填入您的 **OpenAI 兼容服务的API密钥** (`OPENAI_API_KEY`) 和 **Base URL** (`OPENAI_API_BASE`)。
-    *   (可选) 您可以添加 `DAILY_LIMIT=200` 这样的行来设置每日的请求上限，默认为100。
+    - 复制 `.env.example` 为 `.env`。
+    - 在 `.env` 文件中填入你的 `OPENAI_API_KEY` 和 `OPENAI_API_BASE`。
+    - (可选) 设置 `DAILY_LIMIT=200` 来调整每日API请求上限（默认100）。
 
 ### 一键启动
-
-1.  **打开终端**:
-    *   在您的电脑上打开一个终端或命令行工具。
-2.  **进入项目目录**:
-    *   使用 `cd` 命令，进入本项目的根目录（即包含 `docker-compose.yml` 文件的目录）。
-3.  **启动！**
-    *   运行以下命令：
-        ```bash
-        docker-compose up --build
-        ```
-4.  **等待**:
-    *   Docker会自动开始构建镜像、下载Redis、安装所有依赖并启动服务。第一次启动时可能需要几分钟。
-5.  **访问应用**:
-    *   当您在终端看到类似 `Listening at: http://0.0.0.0:5000` 的日志时，就表示启动成功了！
-    *   现在，打开您的浏览器，访问 `http://localhost:5000` 即可开始使用。
+在项目根目录下，打开终端并运行：
+```bash
+docker-compose up --build
+```
+首次构建可能需要几分钟。当看到日志显示 `Listening at: http://0.0.0.0:5000` 时，在浏览器中打开 `http://localhost:5000` 即可使用。
 
 ### 如何停止
-
--   在您启动 `docker-compose` 的那个终端窗口中，按下 `Ctrl + C` 即可停止所有服务。
-
----
-
-## ⚙️ 每日限额功能
-
--   本项目已重新引入**每日请求限额**功能，通过Redis数据库进行计数。
--   默认上限为**100次/天**。您可以通过在 `.env` 文件中设置 `DAILY_LIMIT` 变量来修改此值。
--   **如何重置计数?** 由于我们现在是独立的Docker应用，计数器需要手动重置。您可以使用任何Redis客户端连接到 `localhost:6379`，然后执行 `SET daily_requests_count 0` 命令来清零。在生产环境中，通常会设置一个服务器级别的定时任务（Cron Job）来自动执行此操作。
+在运行命令的终端中，按下 `Ctrl + C`。
 
 ---
 
 ## 🧪 自动化测试
 
-本项目使用 `pytest` 进行后端自动化测试。测试用例位于 `tests/test_app.py`。
+本项目使用 `pytest` 进行后端测试。
 
-### 运行测试
+**在Docker容器内运行 (推荐)**
+1.  **启动服务**: `docker-compose up -d`
+2.  **进入容器**: `docker-compose exec web /bin/sh`
+3.  **运行测试**: 在容器的shell中，运行 `pytest`。
 
-测试可以直接在您的本地环境运行，也可以在Docker容器内运行。
-
-**方式一：在本地运行 (推荐)**
-
-1.  **安装依赖**:
-    确保您已在本地Python环境中安装了项目所需的所有依赖，包括测试工具。
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-2.  **设置环境变量**:
-    为了让测试能够模拟API调用，您需要设置必要的环境变量。最简单的方式是直接加载您的 `.env` 文件，或者在运行测试前手动导出它们。
-
-3.  **执行测试**:
-    在项目根目录下，直接运行 `pytest` 命令：
-    ```bash
-    pytest
-    ```
-    `pytest` 会自动发现 `pytest.ini` 配置，并运行 `tests` 目录下的所有测试。
-
-**方式二：在Docker容器内运行**
-
-如果您不想在本地安装Python环境，也可以在正在运行的 `web` 容器内执行测试。
-
-1.  **启动服务**:
-    首先，确保您的Docker容器正在运行：
-    ```bash
-    docker-compose up -d
-    ```
-
-2.  **进入容器**:
-    使用 `docker-compose exec` 命令进入 `web` 服务的shell环境：
-    ```bash
-    docker-compose exec web /bin/sh
-    ```
-
-3.  **运行测试**:
-    在容器的shell中，直接运行 `pytest`：
-    ```bash
-    pytest
-    ```
+**在本地运行**
+1.  **安装依赖**: `pip install -r requirements.txt`
+2.  **运行测试**: 在项目根目录下，运行 `pytest`。
