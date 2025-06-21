@@ -3,3 +3,4 @@ openai
 pytest
 pytest-mock
 gunicorn
+gevent

@@ -17,5 +17,5 @@ COPY . .
 EXPOSE 5000
 
 # Define the command to run the application using a production-ready server.
-# We use gunicorn, which should be added to requirements.txt.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+# We use gunicorn with the 'gevent' worker type, which is ideal for streaming.
+CMD ["gunicorn", "-k", "gevent", "--bind", "0.0.0.0:5000", "app:app"]
