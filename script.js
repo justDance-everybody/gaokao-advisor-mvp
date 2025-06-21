@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rankSliderValue = document.getElementById('rank-slider-value');
     const scoreTypeGroup = document.getElementById('score-type-group');
     const usageStats = document.getElementById('usage-stats');
+    const dilemmaInput = document.getElementById('dilemma-input');
+    const dilemmaTags = document.querySelector('.dilemma-tags');
+    const savePdfBtn = document.getElementById('save-pdf-btn');
 
     // --- Event Listeners ---
     submitButton.addEventListener('click', handleSubmit);
@@ -70,6 +73,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    if (dilemmaTags) {
+        dilemmaTags.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tag-btn')) {
+                const tagText = e.target.textContent;
+                dilemmaInput.value += (dilemmaInput.value ? '，' : '') + tagText;
+            }
+        });
+    }
+
+    if(savePdfBtn) {
+        savePdfBtn.addEventListener('click', handleSavePdf);
+    }
+
     // --- Autocomplete Initialization ---
     if (suggestions.length > 0) {
         new autoComplete({
@@ -98,6 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { thinkContainer, thinkContent, answerContent, toggleThink } = botMessageDiv;
         
         submitButton.disabled = true;
+        savePdfBtn.style.display = 'none';
 
         try {
             const response = await fetch('/api/handler', {
@@ -106,15 +123,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ userInput })
             });
 
-            // Handle non-streaming errors first (e.g., quota exceeded)
-            if (response.headers.get("Content-Type") !== "text/event-stream") {
+            if (response.headers.get("Content-Type")?.includes("application/json")) {
                 const errorData = await response.json();
-                if (errorData.usage) {
-                    updateUsage(errorData.usage);
-                }
+                if (errorData.usage) updateUsage(errorData.usage);
                 answerContent.innerHTML = `<pre style="color:red;">${errorData.error}</pre>`;
                 submitButton.disabled = false;
                 return;
+            }
+
+            if (!response.ok || !response.body) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const reader = response.body.getReader();
@@ -148,6 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         } catch (e) { console.error("Failed to parse usage data:", data); }
                     } else if (message.startsWith('event: end')) {
                         processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent);
+                        savePdfBtn.style.display = 'inline-block';
                         submitButton.disabled = false;
                         return; 
                     } else if (message.startsWith('event: error')) {
@@ -209,8 +228,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (thinkMatch) {
             const thinkText = thinkMatch[1];
             currentAnswer = text.replace(thinkMatch[0], '');
-            thinkContainer.style.display = 'block';
-            thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
+            if (thinkText.trim()) {
+                thinkContainer.style.display = 'block';
+                thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
+            }
         }
         answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
         reportContainer.scrollTop = reportContainer.scrollHeight;
@@ -234,6 +255,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updateUsage(usage) {
         if (usage && usage.used !== undefined && usage.limit !== undefined) {
             usageStats.textContent = `今日用量: ${usage.used} / ${usage.limit}`;
+        }
+    }
+
+    async function handleSavePdf() {
+        const reportToSave = reportContainer.querySelector('.bot-message');
+        if (!reportToSave) {
+            alert("没有可保存的报告。");
+            return;
+        }
+        
+        savePdfBtn.disabled = true;
+        savePdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 正在生成...';
+
+        try {
+            const { jsPDF } = window.jspdf;
+            const canvas = await html2canvas(reportToSave, {
+                scale: 2, // Improve quality
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'p',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+            pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+            pdf.save("高考志愿AI分析报告.pdf");
+        } catch (error) {
+            console.error("Failed to save PDF:", error);
+            alert("保存PDF失败，请检查控制台错误信息。");
+        } finally {
+            savePdfBtn.disabled = false;
+            savePdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> 保存为PDF';
         }
     }
 

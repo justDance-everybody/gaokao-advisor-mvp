@@ -20,28 +20,41 @@ body {
     font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
     background: linear-gradient(135deg, var(--bg-body-light-start), var(--bg-body-light-end));
     color: var(--text-dark-primary); 
+    display: flex;
+    flex-direction: column; /* Allow header and container to stack */
     height: 100vh;
     width: 100vw;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 1rem;
     overflow: hidden;
+}
+
+.main-header {
+    width: 100%;
+    padding: 0.75rem 2rem;
+    background: var(--nc-primary-dark);
+    color: var(--text-on-primary-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+    z-index: 10;
+}
+.main-header h1 {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+}
+#usage-stats {
+    font-size: 0.9rem;
+    background: rgba(0,0,0,0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
 }
 
 .container {
     display: flex; 
     flex-direction: row; 
     width: 100%;
-    max-width: 80rem;
-    height: 100%;
-    max-height: 95vh;
-    background: var(--bg-container-light); 
-    border-radius: 1rem;
+    height: 100%; /* Take remaining height */
     overflow: hidden;
-    backdrop-filter: blur(10px); 
-    box-shadow: 0 8px 30px rgba(0, 77, 82, 0.1); 
-    border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
 /* --- Left Side: Submission Area --- */
@@ -60,8 +73,11 @@ body {
     background: var(--nc-primary); 
     text-align: center;
     flex-shrink: 0; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
-.submission-area header h1, .report-main-area header h1 {
+.submission-area header h2, .report-main-area header h2 {
     font-size: clamp(1.1rem, 2.5vw, 1.25rem);
     font-weight: bold;
     color: var(--text-on-primary-bg); 
@@ -69,15 +85,24 @@ body {
 
 .report-main-area header {
     background: var(--nc-primary-dark);
-    display: flex;
     justify-content: space-between;
-    align-items: center;
 }
 
-#usage-stats {
-    font-size: 0.8rem;
-    color: var(--text-on-primary-bg);
-    opacity: 0.8;
+#save-pdf-btn {
+    background: var(--nc-primary-light);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+#save-pdf-btn:hover {
+    background: var(--nc-primary);
+}
+#save-pdf-btn:disabled {
+    background: #555;
+    cursor: not-allowed;
 }
 
 .form-container {
@@ -100,6 +125,10 @@ textarea { min-height: 80px; resize: vertical; }
 .slider-group input[type="number"] { width: 100px; }
 .slider-group input[type="range"] { flex-grow: 1; }
 .slider-group #rank-slider-value { font-weight: bold; min-width: 50px; text-align: right; }
+
+.dilemma-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.tag-btn { background: #e2e8f0; border: 1px solid transparent; border-radius: 1rem; padding: 0.3rem 0.8rem; cursor: pointer; transition: all 0.2s; }
+.tag-btn:hover { background: #dbeafe; border-color: #3182ce; }
 
 #submit-button { width: 100%; padding: 15px; font-size: 1.1rem; font-weight: bold; color: #fff; background-color: #3182ce; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; }
 #submit-button:hover { background-color: #2b6cb0; }
@@ -155,37 +184,30 @@ textarea { min-height: 80px; resize: vertical; }
 
 .think-content { max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.4s ease-in-out, opacity 0.4s ease-in-out; }
 .think-content.expanded { max-height: 300px; opacity: 1; overflow-y: auto; }
-.think-content pre { margin-top: 0.5em; background-color: #F8F9FA; box-shadow: inset 0 1px 4px rgba(0,0,0,0.04); } /* Corrected style */
+.think-content pre { margin-top: 0.5em; background-color: #F8F9FA; box-shadow: inset 0 1px 4px rgba(0,0,0,0.04); }
 
 .typing-cursor { display: inline-block; width: 10px; height: 1.2rem; background-color: #333; animation: blink 1s infinite; margin-left: 2px; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* --- Responsive Layout --- */
 @media (max-width: 1024px) {
-    body { padding: 0.5rem; }
-    .container { height: 100%; max-height: 100%; }
+    body { padding: 0; }
+    .container { height: 100%; max-height: 100%; flex-direction: column; }
     .submission-area {
-        width: 45%;
-        min-width: 18rem;
+        width: 100%;
+        max-height: 45vh;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color-light-subtle);
     }
-    .form-container {
-        padding: 1rem;
+    .report-main-area {
+        width: 100%;
+        flex-grow: 1;
     }
 }
 
 @media (max-width: 768px) {
-    body { padding: 0; }
-    .container { flex-direction: column; height: 100vh; max-height: 100%; border-radius: 0; }
     .submission-area { 
-        width: 100%; 
-        height: auto; 
         max-height: 50vh;
-        border-right: none; 
-        border-bottom: 1px solid var(--border-color-light-subtle); 
-    }
-    .report-main-area { 
-        width: 100%; 
-        flex-grow: 1;
     }
     .form-container {
         padding: 0.75rem 1rem;
@@ -196,7 +218,7 @@ textarea { min-height: 80px; resize: vertical; }
     textarea {
         min-height: 60px;
     }
-    .submission-area header h1, .report-main-area header h1 {
+    .submission-area header h2, .report-main-area header h2 {
         font-size: 1.1rem;
         padding: 0.75rem;
     }
