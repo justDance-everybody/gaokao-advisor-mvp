@@ -119,22 +119,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ userInput })
             });
 
+            const data = await response.json();
+
             if (!response.ok) {
                 let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
-                try {
-                    const errorData = await response.json();
-                    let backendMessage = errorData.error || JSON.stringify(errorData);
-                    if (errorData.traceback) {
-                        backendMessage += `\n\n--- 后端堆栈跟踪 ---\n${errorData.traceback}`;
-                    }
-                    errorText += `\n后端信息: ${backendMessage}`;
-                } catch (e) {
-                    errorText += `\n响应内容不是有效的JSON。`;
+                let backendMessage = data.error || JSON.stringify(data);
+                if (data.traceback) {
+                    backendMessage += `\n\n--- 后端堆栈跟踪 ---\n${data.traceback}`;
                 }
+                errorText += `\n后端信息: ${backendMessage}`;
                 throw new Error(errorText);
             }
-
-            const data = await response.json();
+            
             const reportHtml = marked.parse(data.report);
             showReportState(reportHtml);
 
