@@ -20,15 +20,16 @@ def client():
 def mock_redis(mocker):
     """Auto-mock Redis for all tests to prevent actual Redis calls."""
     if not kv:
-        return None
-    
+        yield None
+        return
+
     mock = MagicMock()
     mock.ping.return_value = True
     mock.get.return_value = '0'
     mock.incr.return_value = 1
     
     mocker.patch('app.kv', new=mock)
-    return mock
+    yield mock
 
 def test_index_route(client):
     """Test if the index route returns the main page."""
@@ -48,12 +49,12 @@ def test_get_usage_success(client, mock_redis):
     assert data['used'] == 10
     assert data['limit'] == DAILY_LIMIT
 
-def test_get_usage_redis_error(client, mocker):
+def test_get_usage_redis_error(client, mock_redis):
     """Test /api/usage when Redis connection fails."""
-    if not kv:
+    if not mock_redis:
         pytest.skip("Redis is not configured, skipping test.")
 
-    mocker.patch.object(kv, 'get', side_effect=Exception("Redis down"))
+    mock_redis.get.side_effect = Exception("Redis down")
     response = client.get('/api/usage')
     assert response.status_code == 500
     data = response.get_json()
@@ -108,10 +109,11 @@ def test_handler_stream_success(mock_openai, client, mock_redis):
     assert f"event: message\ndata: {json.dumps('Hello')}" in stream_content
     assert "event: end\ndata: End of stream" in stream_content
 
-def test_handler_missing_env_vars(client):
+def test_handler_missing_env_vars(client, mocker):
     """Test /api/handler when OpenAI env vars are missing."""
-    with patch.dict(os.environ, {'OPENAI_API_KEY': '', 'OPENAI_API_BASE': ''}):
-        response = client.post('/api/handler', json={'userInput': {'rawText': 'test'}})
+    mocker.patch.dict(os.environ, {"OPENAI_API_KEY": "", "OPENAI_API_BASE": ""}, clear=True)
+    
+    response = client.post('/api/handler', json={'userInput': {'rawText': 'test'}})
     
     assert response.status_code == 200
     stream_content = response.get_data(as_text=True)

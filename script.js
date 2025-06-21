@@ -277,7 +277,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
             }
         }
-        answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
+        // Only parse the part of the answer that is new
+        answerContent.innerHTML = marked.parse(currentAnswer) + '<span class="typing-cursor"></span>';
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
