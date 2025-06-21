@@ -109,6 +109,7 @@ body {
     flex-grow: 1;
     padding: 1.5rem;
     overflow-y: auto;
+    min-height: 0; /* Fix for flexbox overflow on mobile */
 }
 
 .form-group { margin-bottom: 1.25rem; }
