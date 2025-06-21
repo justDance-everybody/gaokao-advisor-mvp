@@ -234,10 +234,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentAnswer = text.replace(thinkMatch[0], '');
             if (thinkText.trim()) {
                 thinkContainer.style.display = 'block';
+                // During streaming, just show the raw text in a <pre> tag
                 thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
             }
         }
-        answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
+        // During streaming, just show the raw text with a cursor
+        answerContent.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${currentAnswer}<span class="typing-cursor"></span></pre>`;
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
@@ -248,10 +250,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const thinkText = thinkMatch[1];
             finalAnswer = text.replace(thinkMatch[0], '');
             thinkContainer.style.display = 'block';
+            // Final render for think content
             thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
         } else {
             thinkContainer.style.display = 'none';
         }
+        // Final render for answer content, now using marked.js
         answerContent.innerHTML = marked.parse(finalAnswer);
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
@@ -289,16 +293,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             const { jsPDF } = window.jspdf;
             const userInput = await getUserInput();
             
-            // Create a temporary container for PDF content
             const pdfContent = document.createElement('div');
             pdfContent.style.padding = '20px';
-            pdfContent.style.width = '800px'; // A fixed width for consistent PDF layout
+            pdfContent.style.width = '800px';
+            pdfContent.style.background = 'white';
             
             const userInputHeader = document.createElement('h3');
             userInputHeader.textContent = '我的输入';
             pdfContent.appendChild(userInputHeader);
             
             const userInputContent = document.createElement('pre');
+            userInputContent.style.whiteSpace = 'pre-wrap';
+            userInputContent.style.fontFamily = 'inherit';
             userInputContent.textContent = userInput.rawText;
             pdfContent.appendChild(userInputContent);
 
@@ -310,9 +316,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const answerClone = reportToSave.querySelector('.answer-content').cloneNode(true);
             pdfContent.appendChild(answerClone);
 
-            // Append to body to render for html2canvas, but keep it off-screen
-            pdfContent.style.position = 'absolute';
-            pdfContent.style.left = '-9999px';
             document.body.appendChild(pdfContent);
 
             const canvas = await html2canvas(pdfContent, {
@@ -321,7 +324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 backgroundColor: '#ffffff'
             });
             
-            document.body.removeChild(pdfContent); // Clean up
+            document.body.removeChild(pdfContent);
 
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF({
