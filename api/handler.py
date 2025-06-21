@@ -124,14 +124,28 @@ def handler():
 
     # 5. Update Counter & Return Result
     try:
-        # Manually implement increment, as the installed library version lacks it.
-        current_count = kv.get(KV_KEY)
-        new_count = (int(current_count) + 1) if current_count is not None else 1
-        kv.set(KV_KEY, new_count)
+        # Use atomic increment for safety and correctness
+        kv.incr(KV_KEY)
     except Exception as e:
+        # If increment fails, it's not critical enough to fail the whole request.
+        # Log it for monitoring.
         print(f"KV increment failed: {e}")
 
     return jsonify({"report": report_markdown}), 200
+
+@app.route('/api/cron/reset', methods=['GET'])
+def reset_counter():
+    """
+    A dedicated endpoint for a Vercel Cron Job to call daily.
+    Resets the daily request counter to 0.
+    """
+    try:
+        kv.set(KV_KEY, 0)
+        return jsonify({"message": "Counter reset successfully."}), 200
+    except Exception as e:
+        print(f"Cron job failed to reset counter: {e}")
+        return jsonify({"error": "Failed to reset counter."}), 500
+
 
 # This check allows running the app locally for development
 if __name__ == "__main__":

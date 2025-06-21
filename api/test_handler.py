@@ -80,8 +80,8 @@ def test_quota_available(MockOpenAI, mock_kv, client, sample_user_data):
     # Assert that 'get' was called for the initial check
     mock_kv.get.assert_any_call('daily_requests_count')
     MockOpenAI.return_value.chat.completions.create.assert_called_once()
-    # Assert that 'set' was called to increment the value
-    mock_kv.set.assert_called_once_with('daily_requests_count', 501)
+    # Assert that 'incr' was called to increment the value
+    mock_kv.incr.assert_called_once_with('daily_requests_count')
 
 @patch('api.handler.kv')
 def test_quota_exhausted(mock_kv, client, sample_user_data):

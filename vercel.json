@@ -1,0 +1,8 @@
+{
+  "cron": [
+    {
+      "path": "/api/cron/reset",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

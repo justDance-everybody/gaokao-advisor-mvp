@@ -28,15 +28,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Main Handler Functions ---
     async function handleSubmit() {
         showLoadingState();
-        const userInput = getUserInput();
-
-        if (!userInput) {
-            showErrorState("无法获取输入内容，请检查您的输入。");
-            return;
-        }
 
         try {
-            const response = await fetch('/api/handler', {
+            const userInput = await getUserInput(); // Can throw error
+
+            if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
+                 showErrorState("输入内容不能为空，请填写或上传您的方案。");
+                 return;
+            }
+
+            const response = await fetch('/api/handler', { // Can throw error
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
@@ -51,9 +52,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 showReportState(reportHtml);
             }
         } catch (error) {
-            console.error("Fetch Error:", error);
-            console.error("A network error occurred. This is often because the API server is not running or reachable. If you are running this locally, please ensure you have started the server using 'vercel dev' and are accessing the site via the provided localhost URL, not by opening the HTML file directly.");
-            showErrorState("网络请求失败，请检查您的网络连接或稍后重试。");
+            console.error("Submit/Fetch Error:", error);
+            let errorMessage = "网络请求失败，请检查您的网络连接或稍后重试。";
+            if (error.message.includes("读取文件时出错")) {
+                errorMessage = "读取文件时出错，请检查文件是否损坏或格式是否正确。";
+            }
+            showErrorState(errorMessage);
         }
     }
 
@@ -96,15 +100,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function showErrorState(message) {
         document.getElementById('error-message').textContent = message;
         waitingView.style.display = 'none';
+        // Keep submission view hidden if error occurs, show the error view instead.
         submissionView.style.display = 'none';
         reportView.style.display = 'none';
         errorView.style.display = 'block';
-        // Allow user to try again
+        // Allow user to try again, but they'll need to refresh or we need a "try again" button
+        // For now, let's re-enable the main view to allow re-submission.
+        // A better UX would be a dedicated "back" or "retry" button in the error view.
         submitButton.disabled = false; 
     }
 
     // --- Data Gathering ---
-    function getUserInput() {
+    async function getUserInput() {
         const activeTab = document.querySelector('.tab-button.active').dataset.tab;
         let rawText = "";
         let province = "", stream = "", rank = "", options = "", dilemma = "";
@@ -112,13 +119,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeTab === 'paste') {
             rawText = document.getElementById('raw-text-input').value;
         } else if (activeTab === 'upload') {
-            // File handling would be more complex, requiring backend processing.
-            // For MVP, we can simplify and just send the filename as an indicator.
-            // A real implementation would use FileReader to get text content.
             const fileInput = document.getElementById('file-input');
             if (fileInput.files.length > 0) {
-                rawText = `用户上传了文件: ${fileInput.files[0].name}`;
-                 // In a real app, you'd use FileReader API here to read the file content.
+                const file = fileInput.files[0];
+                // Use a promise to handle the async nature of FileReader
+                rawText = await new Promise((resolve, reject) => {
+                    // Basic type check
+                    if (file.type.startsWith('image/')) {
+                        resolve(`用户上传了图片: ${file.name}。请注意，AI无法直接分析图片内容，请将图片中的文字手动粘贴。`);
+                        return;
+                    }
+                    if (file.type.includes('word')) {
+                         resolve(`用户上传了Word文档: ${file.name}。请注意，AI将尝试读取文本，但复杂格式可能无法解析。`);
+                         return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = (e) => reject(new Error("读取文件时出错"));
+                    reader.readAsText(file, 'UTF-8');
+                });
             }
         } else if (activeTab === 'fill') {
             province = document.getElementById('province-input').value;
@@ -126,13 +146,19 @@ document.addEventListener('DOMContentLoaded', () => {
             rank = document.getElementById('rank-input').value;
             options = document.getElementById('options-input').value;
             dilemma = document.getElementById('dilemma-input').value;
-            rawText = `方案: ${options}\n困惑: ${dilemma}`;
+            rawText = `省份: ${province}\n科类: ${stream}\n分数/位次: ${rank}\n方案: ${options}\n困惑: ${dilemma}`;
         }
 
+        // Consolidate data from the 'fill' tab into the final object
+        const finalProvince = province || document.getElementById('province-input').value;
+        const finalStream = stream || document.getElementById('stream-input').value;
+        const finalRank = rank || document.getElementById('rank-input').value;
+
+
         return {
-            province: province,
-            stream: stream,
-            rank: rank ? parseInt(rank, 10) : null,
+            province: finalProvince,
+            stream: finalStream,
+            rank: finalRank ? parseInt(finalRank, 10) : null,
             rawText: rawText,
         };
     }
