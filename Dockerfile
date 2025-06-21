@@ -7,6 +7,9 @@ WORKDIR /app
 # Copy the requirements file first to leverage Docker cache.
 COPY requirements.txt .
 
+# Set a trusted pip mirror for faster installs.
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
 # Install the dependencies.
 RUN pip install -r requirements.txt
 

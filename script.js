@@ -111,12 +111,9 @@ document.addEventListener('DOMContentLoaded', async () => {
              return;
         }
 
-        // Switch to report view immediately and clear old content
-        showReportState(""); 
-        reportContent.innerHTML = '<div class="typing-cursor"></div>'; // Show typing cursor
-        
+        showReportState(""); // Switch to report view immediately
         let fullReport = "";
-        
+
         try {
             const response = await fetch('/api/handler', {
                 method: 'POST',
@@ -130,47 +127,54 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    // The stream has been closed gracefully.
+                    break;
+                }
 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n\n');
+                buffer += decoder.decode(value, { stream: true });
+                
+                // Process all complete messages in the buffer.
+                let boundary = buffer.indexOf('\n\n');
+                while (boundary !== -1) {
+                    const message = buffer.substring(0, boundary);
+                    buffer = buffer.substring(boundary + 2);
 
-                for (const line of lines) {
-                    if (line.startsWith('event: message')) {
-                        const data = line.substring(line.indexOf('data: ') + 6);
+                    if (message.startsWith('event: message')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
                         try {
                             const token = JSON.parse(data);
                             fullReport += token;
-                            // Just update the text content for performance, no re-parsing markdown yet
-                            reportContent.textContent = fullReport; 
+                            // To show the "typing" effect, we update the text content directly.
+                            // We use a <pre> tag to preserve whitespace and show the raw markdown.
+                            reportContent.innerHTML = `<pre>${fullReport}<span class="typing-cursor"></span></pre>`;
                         } catch (e) {
                             console.error("Failed to parse token:", data);
                         }
-                    } else if (line.startsWith('event: end')) {
-                        // Stream finished, now parse the full markdown
-                        reportContent.innerHTML = marked.parse(fullReport);
-                        return; // Exit the loop
-                    } else if (line.startsWith('event: error')) {
-                        const data = line.substring(line.indexOf('data: ') + 6);
+                    } else if (message.startsWith('event: error')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
                         try {
                             const errorData = JSON.parse(data);
                             showErrorState(JSON.stringify(errorData, null, 2));
                         } catch(e) {
                             showErrorState(data);
                         }
-                        return; // Exit the loop
+                        return; // Stop processing on error
                     }
+                    boundary = buffer.indexOf('\n\n');
                 }
             }
-            // Final render in case the stream ends without an 'end' event
+            
+            // Final render: Once the stream is done, parse the full markdown.
             reportContent.innerHTML = marked.parse(fullReport);
 
         } catch(error) {
             console.error("Submit/Fetch Error:", error);
-            showErrorState(`网络请求失败: ${error.message}`);
+            showErrorState(`网络请求失败: ${error.name === 'TypeError' ? 'network error' : error.message}`);
         }
     }
 
