@@ -1,4 +1,10 @@
 {
+  "builds": [
+    {
+      "src": "api/handler.py",
+      "use": "@vercel/python"
+    }
+  ],
   "cron": [
     {
       "path": "/api/cron/reset",
