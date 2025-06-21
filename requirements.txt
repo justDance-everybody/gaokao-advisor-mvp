@@ -4,4 +4,3 @@ openai
 pytest
 pytest-mock
 pytest-dotenv
-python-dotenv

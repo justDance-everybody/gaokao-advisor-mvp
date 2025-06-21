@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.py": {
-      "includeFiles": "api/_data/enrollment_data_2025.json"
+      "includeFiles": "api/_data/**"
     }
   },
   "routes": [
