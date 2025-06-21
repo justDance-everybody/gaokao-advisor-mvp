@@ -54,15 +54,16 @@ def test_prepare_prompt_logic(sample_user_data, sample_enrollment_data):
     assert "+5" in prompt
     assert "你是一位顶级的、资深的、充满智慧的高考志愿填报专家" in prompt
 
-@patch('api.handler.kv')
+@patch('api.handler.KV')
 @patch('api.handler.OpenAI')
-def test_quota_available(MockOpenAI, mock_kv, client, sample_user_data):
+def test_quota_available(MockOpenAI, MockKV, client, sample_user_data):
     """
     Test Case 2.2.1: Validates behavior when quota is available.
     """
     # --- Mock Setup ---
-    mock_kv.get.return_value = 500
-    mock_kv.incr.return_value = 501
+    # Mock the instance that will be created inside the handler
+    mock_kv_instance = MockKV.return_value
+    mock_kv_instance.get.return_value = 500
     
     mock_chat_completion = MagicMock()
     mock_chat_completion.choices[0].message.content = "This is a test report."
@@ -77,19 +78,20 @@ def test_quota_available(MockOpenAI, mock_kv, client, sample_user_data):
     assert "report" in response_data
     assert response_data["report"] == "This is a test report."
     
-    # Assert that 'get' was called for the initial check
-    mock_kv.get.assert_any_call('daily_requests_count')
+    # Assert that the KV class was instantiated and methods were called on the instance
+    MockKV.assert_called()
+    mock_kv_instance.get.assert_called_with('daily_requests_count')
     MockOpenAI.return_value.chat.completions.create.assert_called_once()
-    # Assert that 'incr' was called to increment the value
-    mock_kv.incr.assert_called_once_with('daily_requests_count')
+    mock_kv_instance.incr.assert_called_once_with('daily_requests_count')
 
-@patch('api.handler.kv')
-def test_quota_exhausted(mock_kv, client, sample_user_data):
+@patch('api.handler.KV')
+def test_quota_exhausted(MockKV, client, sample_user_data):
     """
     Test Case 2.2.2: Validates behavior when quota is exhausted.
     """
     # --- Mock Setup ---
-    mock_kv.get.return_value = 1000 # The limit
+    mock_kv_instance = MockKV.return_value
+    mock_kv_instance.get.return_value = 1000 # The limit
 
     # --- Execution ---
     response = client.post('/api/handler', json=sample_user_data)
@@ -99,15 +101,16 @@ def test_quota_exhausted(mock_kv, client, sample_user_data):
     response_data = response.get_json()
     assert "error" in response_data
     assert "今日的免费体验名额已被抢完" in response_data["error"]
-    mock_kv.get.assert_called_once_with('daily_requests_count')
+    mock_kv_instance.get.assert_called_once_with('daily_requests_count')
 
-@patch('api.handler.kv')
-def test_kv_database_error(mock_kv, client, sample_user_data):
+@patch('api.handler.KV')
+def test_kv_database_error(MockKV, client, sample_user_data):
     """
     Test Case 2.2.3: Validates behavior when the KV database fails.
     """
     # --- Mock Setup ---
-    mock_kv.get.side_effect = Exception("Connection Error")
+    mock_kv_instance = MockKV.return_value
+    mock_kv_instance.get.side_effect = Exception("Connection Error")
 
     # --- Execution ---
     response = client.post('/api/handler', json=sample_user_data)
@@ -117,7 +120,7 @@ def test_kv_database_error(mock_kv, client, sample_user_data):
     response_data = response.get_json()
     assert "error" in response_data
     assert "服务暂时不可用" in response_data["error"]
-    mock_kv.get.assert_called_once_with('daily_requests_count')
+    mock_kv_instance.get.assert_called_once_with('daily_requests_count')
 
 def test_bad_request_no_json(client):
     """Tests server response when POST request has no JSON body."""

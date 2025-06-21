@@ -1,10 +1,9 @@
 {
-  "builds": [
-    {
-      "src": "api/handler.py",
-      "use": "@vercel/python"
+  "functions": {
+    "api/handler.py": {
+      "includeFiles": "_data/enrollment_data_2025.json"
     }
-  ],
+  },
   "cron": [
     {
       "path": "/api/cron/reset",

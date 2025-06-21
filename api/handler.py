@@ -3,10 +3,9 @@ import json
 from flask import Flask, request, jsonify
 from vercel_kv import KV
 
-# The KV client automatically reads the required credentials
-# from environment variables.
-kv = KV()
 from openai import OpenAI
+# The KV client will be instantiated inside the handler functions
+# to ensure environment variables are available.
 
 # --- Configuration ---
 DAILY_LIMIT = 1000
@@ -77,6 +76,7 @@ def handler():
 
     # 2. Cost Control & Safety Check
     try:
+        kv = KV()
         count = kv.get(KV_KEY) or 0
         if count >= DAILY_LIMIT:
             return jsonify({"error": "非常抱歉，今日的免费体验名额已被抢完！请您明日再来。"}), 429
@@ -125,6 +125,8 @@ def handler():
     # 5. Update Counter & Return Result
     try:
         # Use atomic increment for safety and correctness
+        # Re-instantiate kv in case it was not created in the check block
+        kv = KV()
         kv.incr(KV_KEY)
     except Exception as e:
         # If increment fails, it's not critical enough to fail the whole request.
@@ -140,6 +142,7 @@ def reset_counter():
     Resets the daily request counter to 0.
     """
     try:
+        kv = KV()
         kv.set(KV_KEY, 0)
         return jsonify({"message": "Counter reset successfully."}), 200
     except Exception as e:
