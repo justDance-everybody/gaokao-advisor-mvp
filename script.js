@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Autocomplete Data Loading ---
     let suggestions = [];
     try {
-        const response = await fetch('api/_data/enrollment_data_2025.json');
+        const response = await fetch('_data/enrollment_data_2025.json');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }

@@ -3,32 +3,11 @@ import json
 import traceback
 from flask import Flask, request, jsonify, send_from_directory
 from openai import OpenAI
-import redis
-
-# --- Configuration ---
-DAILY_LIMIT = 1000
-KV_KEY = 'daily_requests_count'
-
-# Connect to Redis. The connection details are retrieved from environment variables.
-# This allows flexibility for different environments (local dev vs. Docker).
-try:
-    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-    kv = redis.from_url(redis_url, decode_responses=True)
-    # Test connection
-    kv.ping()
-    print("Successfully connected to Redis.")
-except redis.exceptions.ConnectionError as e:
-    print("Could not connect to Redis. Please ensure Redis is running and REDIS_URL is set correctly.")
-    print(f"Error: {e}")
-    # In a real app, you might want to exit or have a fallback.
-    # For now, we'll let it fail on the first request.
-    kv = None
 
 # Create a Flask app instance that serves static files from the root
 app = Flask(__name__, static_url_path='', static_folder='.')
 
 def prepare_prompt(user_data, enrollment_data):
-    # ... (omitted for brevity, no changes here)
     user_info = user_data.get('rawText', '')
     province = user_data.get('province', '未知')
     rank = user_data.get('rank', '未知')
@@ -74,74 +53,48 @@ def prepare_prompt(user_data, enrollment_data):
 def serve_index():
     return send_from_directory('.', 'index.html')
 
+# This route is crucial for serving the autocomplete data file
+@app.route('/_data/<path:path>')
+def serve_data_files(path):
+    return send_from_directory('_data', path)
+
 @app.route('/<path:path>')
 def serve_static(path):
-    # This will serve style.css, script.js, and other files
     return send_from_directory('.', path)
 
 # --- API Route ---
 @app.route('/api/handler', methods=['POST'])
 def handler():
     try:
-        # 1. Parse User Data FIRST
-        try:
-            body = request.get_json(silent=True)
-            if not body or 'userInput' not in body:
-                return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
-            user_data = body.get('userInput', {})
-        except Exception as e:
-            print(f"Data Parse Error: {e}")
-            return jsonify({"error": f"解析用户数据时出错: {e}"}), 500
+        # 1. Parse User Data
+        body = request.get_json(silent=True)
+        if not body or 'userInput' not in body:
+            return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
+        user_data = body.get('userInput', {})
 
-        # 2. Cost Control & Safety Check
-        if not kv:
-            return jsonify({"error": "数据库服务未连接，请检查服务器配置。"}), 500
+        # 2. Prepare Prompt
         try:
-            count = kv.get(KV_KEY)
-            count = int(count) if count else 0
-            if count >= DAILY_LIMIT:
-                return jsonify({"error": "非常抱歉，今日的免费体验名额已被抢完！请您明日再来。"}), 429
-        except Exception as e:
-            print(f"KV Error: {e}")
-            return jsonify({"error": f"数据库操作失败: {e}"}), 500
-
-        # 3. Prepare Prompt
-        try:
-            # The path is now relative to the root of the project
             enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
             with open(enrollment_data_path, 'r', encoding='utf-8') as f:
                 enrollment_data = json.load(f)
             prompt = prepare_prompt(user_data, enrollment_data)
         except FileNotFoundError:
-            print(f"FATAL: {enrollment_data_path} not found.")
             return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
-        except Exception as e:
-            print(f"Prompt Prep Error: {e}")
-            return jsonify({"error": f"准备分析数据时出错: {e}"}), 500
-
-        # 4. Call AI API
-        try:
-            api_key = os.environ.get("OPENAI_API_KEY")
-            base_url = os.environ.get("OPENAI_API_BASE")
-            if not api_key or not base_url:
-                raise ValueError("OPENAI_API_KEY or OPENAI_API_BASE not found in environment variables.")
-            client = OpenAI(api_key=api_key, base_url=base_url)
-            model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
-            chat_completion = client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model_name,
-            )
-            report_markdown = chat_completion.choices[0].message.content
-        except Exception as e:
-            print(f"AI API Error: {e}")
-            return jsonify({"error": f"AI服务调用失败: {e}"}), 503
-
-        # 5. Update Counter & Return Result
-        try:
-            kv.incr(KV_KEY)
-        except Exception as e:
-            # Not a critical failure, just log it.
-            print(f"KV increment failed: {e}")
+        
+        # 3. Call AI API
+        api_key = os.environ.get("OPENAI_API_KEY")
+        base_url = os.environ.get("OPENAI_API_BASE")
+        if not api_key or not base_url:
+            raise ValueError("服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。")
+        
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
+        
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=model_name,
+        )
+        report_markdown = chat_completion.choices[0].message.content
 
         return jsonify({"report": report_markdown}), 200
 
@@ -149,11 +102,9 @@ def handler():
         error_trace = traceback.format_exc()
         print(f"UNHANDLED EXCEPTION: {error_trace}")
         return jsonify({
-            "error": "服务器发生未知致命错误。",
+            "error": f"服务器发生未知致命错误: {e}",
             "traceback": error_trace
         }), 500
 
 if __name__ == "__main__":
-    # Use a production-ready server like gunicorn for Docker
-    # For local development, Flask's built-in server is fine.
     app.run(debug=True, host='0.0.0.0', port=5000)
