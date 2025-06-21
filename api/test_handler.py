@@ -3,7 +3,7 @@ import json
 from unittest.mock import patch, MagicMock
 
 # Import the Flask app instance from your handler
-from api.handler import app
+from api.index import app
 
 @pytest.fixture
 def client():
@@ -42,7 +42,7 @@ def test_prepare_prompt_logic(sample_user_data, sample_enrollment_data):
     Test Case 2.1: Validates that the prompt is correctly generated.
     This test can remain as a direct unit test of the helper function.
     """
-    from api.handler import prepare_prompt
+    from api.index import prepare_prompt
     prompt = prepare_prompt(sample_user_data['userInput'], sample_enrollment_data)
 
     # Assertions
@@ -54,8 +54,8 @@ def test_prepare_prompt_logic(sample_user_data, sample_enrollment_data):
     assert "+5" in prompt
     assert "你是一位顶级的、资深的、充满智慧的高考志愿填报专家" in prompt
 
-@patch('api.handler.KV')
-@patch('api.handler.OpenAI')
+@patch('api.index.KV')
+@patch('api.index.OpenAI')
 def test_quota_available(MockOpenAI, MockKV, client, sample_user_data):
     """
     Test Case 2.2.1: Validates behavior when quota is available.
@@ -70,7 +70,7 @@ def test_quota_available(MockOpenAI, MockKV, client, sample_user_data):
     MockOpenAI.return_value.chat.completions.create.return_value = mock_chat_completion
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/handler', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 200
@@ -84,7 +84,7 @@ def test_quota_available(MockOpenAI, MockKV, client, sample_user_data):
     MockOpenAI.return_value.chat.completions.create.assert_called_once()
     mock_kv_instance.incr.assert_called_once_with('daily_requests_count')
 
-@patch('api.handler.KV')
+@patch('api.index.KV')
 def test_quota_exhausted(MockKV, client, sample_user_data):
     """
     Test Case 2.2.2: Validates behavior when quota is exhausted.
@@ -94,7 +94,7 @@ def test_quota_exhausted(MockKV, client, sample_user_data):
     mock_kv_instance.get.return_value = 1000 # The limit
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/handler', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 429
@@ -103,7 +103,7 @@ def test_quota_exhausted(MockKV, client, sample_user_data):
     assert "今日的免费体验名额已被抢完" in response_data["error"]
     mock_kv_instance.get.assert_called_once_with('daily_requests_count')
 
-@patch('api.handler.KV')
+@patch('api.index.KV')
 def test_kv_database_error(MockKV, client, sample_user_data):
     """
     Test Case 2.2.3: Validates behavior when the KV database fails.
@@ -113,7 +113,7 @@ def test_kv_database_error(MockKV, client, sample_user_data):
     mock_kv_instance.get.side_effect = Exception("Connection Error")
 
     # --- Execution ---
-    response = client.post('/api/handler', json=sample_user_data)
+    response = client.post('/handler', json=sample_user_data)
 
     # --- Assertions ---
     assert response.status_code == 500
@@ -124,7 +124,7 @@ def test_kv_database_error(MockKV, client, sample_user_data):
 
 def test_bad_request_no_json(client):
     """Tests server response when POST request has no JSON body."""
-    response = client.post('/api/handler', data="this is not json")
+    response = client.post('/handler', data="this is not json")
     assert response.status_code == 400
     response_data = response.get_json()
     assert "error" in response_data

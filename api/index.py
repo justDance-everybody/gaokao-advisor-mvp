@@ -60,9 +60,9 @@ def prepare_prompt(user_data, enrollment_data):
     """
     return prompt
 
-# Vercel will automatically route requests to this app object.
-# We define a single route to handle the POST requests.
-@app.route('/api/handler', methods=['POST'])
+# Vercel routes requests to /api/... to this file.
+# The route is relative to the /api base path.
+@app.route('/handler', methods=['POST'])
 def handler():
     # 1. Parse User Data FIRST
     try:
@@ -135,7 +135,7 @@ def handler():
 
     return jsonify({"report": report_markdown}), 200
 
-@app.route('/api/cron/reset', methods=['GET'])
+@app.route('/cron/reset', methods=['GET'])
 def reset_counter():
     """
     A dedicated endpoint for a Vercel Cron Job to call daily.
