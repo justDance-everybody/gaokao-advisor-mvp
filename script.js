@@ -105,78 +105,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Main Handler Functions ---
     async function handleSubmit() {
-        const userInput = await getUserInput();
-        if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
-             showErrorState("输入内容不能为空，请填写或上传您的方案。");
-             return;
-        }
-
-        // Switch to report view immediately and clear old content
-        showReportState(""); 
-        
-        const eventSource = new EventSource('/api/handler', {
-            method: 'POST', // EventSource doesn't directly support POST, this is a conceptual representation.
-                           // We will send the data in the request body via a custom fetch wrapper.
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userInput })
-        });
-        
-        let fullReport = "";
-
-        eventSource.onmessage = function(event) {
-            try {
-                const token = JSON.parse(event.data);
-                fullReport += token;
-                reportContent.innerHTML = marked.parse(fullReport);
-            } catch(e) {
-                console.error("Failed to parse token:", event.data);
-            }
-        };
-
-        eventSource.onerror = function(err) {
-            console.error("EventSource failed:", err);
-            showErrorState("与服务器的连接中断或发生错误。");
-            eventSource.close();
-        };
-        
-        // This is a workaround because EventSource doesn't natively support POST bodies.
-        // We'll use a fetch request to initiate the stream.
+        showLoadingState();
         try {
+            const userInput = await getUserInput();
+            if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
+                 showErrorState("输入内容不能为空，请填写或上传您的方案。");
+                 return;
+            }
+
             const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
             });
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            function processText({ done, value }) {
-                if (done) {
-                    return;
-                }
-                const chunk = decoder.decode(value);
-                // SSE messages are separated by \n\n
-                const lines = chunk.split('\n\n');
-                lines.forEach(line => {
-                    if (line.startsWith('data:')) {
-                        const data = line.substring(5).trim();
-                        try {
-                            const token = JSON.parse(data);
-                            fullReport += token;
-                            reportContent.innerHTML = marked.parse(fullReport);
-                        } catch(e) {
-                            console.error("Failed to parse token:", data);
-                        }
+            if (!response.ok) {
+                let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
+                try {
+                    const errorData = await response.json();
+                    let backendMessage = errorData.error || JSON.stringify(errorData);
+                    if (errorData.traceback) {
+                        backendMessage += `\n\n--- 后端堆栈跟踪 ---\n${errorData.traceback}`;
                     }
-                });
-                return reader.read().then(processText);
+                    errorText += `\n后端信息: ${backendMessage}`;
+                } catch (e) {
+                    errorText += `\n响应内容不是有效的JSON。`;
+                }
+                throw new Error(errorText);
             }
-            reader.read().then(processText);
 
-        } catch(error) {
+            const data = await response.json();
+            const reportHtml = marked.parse(data.report);
+            showReportState(reportHtml);
+
+        } catch (error) {
             console.error("Submit/Fetch Error:", error);
-            showErrorState(`网络请求失败: ${error.message}`);
+            let detailedErrorMessage = "网络请求失败！\n\n";
+            detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
+            detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
+            detailedErrorMessage += "--- 技术调试信息 ---\n";
+            detailedErrorMessage += `错误类型: ${error.name}\n`;
+            detailedErrorMessage += `错误信息: ${error.message}\n`;
+            showErrorState(detailedErrorMessage);
         }
     }
 
@@ -213,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         submissionView.style.display = 'none';
         errorView.style.display = 'none';
         reportView.style.display = 'block';
-        submitButton.disabled = false; // Re-enable button after completion/error
+        submitButton.disabled = false;
     }
 
     function showErrorState(message) {
