@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  return;
             }
 
-            const response = await fetch('/api/index', {
+            const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })

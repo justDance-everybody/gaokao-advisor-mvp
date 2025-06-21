@@ -54,9 +54,7 @@ def prepare_prompt(user_data, enrollment_data):
     """
     return prompt
 
-# Since Vercel routes /api/index to this file,
-# we can use a simple root route inside Flask.
-@app.route('/', methods=['POST'])
+@app.route('/api/handler', methods=['POST'])
 def handler():
     # Ultimate error catching block to ensure we always get a detailed error
     try:
