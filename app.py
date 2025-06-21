@@ -128,7 +128,8 @@ def handler():
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
-                yield f"event: error\ndata: {json.dumps({'error': '服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。'})}\n\n"
+                error_message = {'error': '服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。'}
+                yield f"event: error\ndata: {json.dumps(error_message)}\n\n"
                 return
             
             client = OpenAI(api_key=api_key, base_url=base_url)

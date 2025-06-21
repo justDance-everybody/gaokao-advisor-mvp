@@ -19,11 +19,16 @@ def client():
 @pytest.fixture(autouse=True)
 def mock_redis(mocker):
     """Auto-mock Redis for all tests to prevent actual Redis calls."""
-    if kv:
-        mocker.patch.object(kv, 'ping', return_value=True)
-        mocker.patch.object(kv, 'get', return_value='0')
-        mocker.patch.object(kv, 'incr', return_value=1)
-    yield
+    if not kv:
+        return None
+    
+    mock = MagicMock()
+    mock.ping.return_value = True
+    mock.get.return_value = '0'
+    mock.incr.return_value = 1
+    
+    mocker.patch('app.kv', new=mock)
+    return mock
 
 def test_index_route(client):
     """Test if the index route returns the main page."""
@@ -33,7 +38,7 @@ def test_index_route(client):
 
 def test_get_usage_success(client, mock_redis):
     """Test the /api/usage endpoint successfully."""
-    if not kv:
+    if not mock_redis:
         pytest.skip("Redis is not configured, skipping test.")
     
     mock_redis.get.return_value = '10'
@@ -57,7 +62,7 @@ def test_get_usage_redis_error(client, mocker):
 
 def test_handler_limit_exceeded(client, mock_redis):
     """Test /api/handler when the daily usage limit is exceeded."""
-    if not kv:
+    if not mock_redis:
         pytest.skip("Redis is not configured, skipping test.")
 
     mock_redis.get.return_value = str(DAILY_LIMIT)
