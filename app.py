@@ -53,7 +53,6 @@ def prepare_prompt(user_data, enrollment_data):
 def serve_index():
     return send_from_directory('.', 'index.html')
 
-# This route is crucial for serving the autocomplete data file
 @app.route('/_data/<path:path>')
 def serve_data_files(path):
     return send_from_directory('_data', path)
@@ -82,30 +81,43 @@ def handler():
             return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
         
         # 3. Call AI API
-        api_key = os.environ.get("OPENAI_API_KEY")
-        base_url = os.environ.get("OPENAI_API_BASE")
-        if not api_key or not base_url:
-            raise ValueError("服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。")
-        
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
-        
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model_name,
-        )
+        try:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            base_url = os.environ.get("OPENAI_API_BASE")
+            if not api_key or not base_url:
+                raise ValueError("服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。")
+            
+            client = OpenAI(api_key=api_key, base_url=base_url)
+            model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
+            
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_name,
+            )
 
-        # Add robust checking for the API response
-        if not chat_completion or not chat_completion.choices:
-            print(f"AI service returned an invalid response: {chat_completion}")
-            return jsonify({"error": "AI服务返回了意外的响应，没有有效的生成内容。"}), 502
+            # Add robust checking for the API response
+            if not chat_completion or not chat_completion.choices:
+                error_message = "AI服务返回了意外的响应，没有有效的生成内容。"
+                # Try to get more details from the raw response
+                raw_response = str(chat_completion)
+                print(f"AI service returned an invalid response: {raw_response}")
+                error_message += f"\n\n--- LLM原始响应 ---\n{raw_response}"
+                return jsonify({"error": error_message}), 502
 
-        report_markdown = chat_completion.choices[0].message.content
-        if not report_markdown:
-            print(f"AI service returned an empty message content: {chat_completion}")
-            return jsonify({"error": "AI服务成功调用，但返回了空内容。"}), 500
+            report_markdown = chat_completion.choices[0].message.content
+            if not report_markdown:
+                error_message = "AI服务成功调用，但返回了空内容。"
+                raw_response = str(chat_completion)
+                print(f"AI service returned an empty message content: {raw_response}")
+                error_message += f"\n\n--- LLM原始响应 ---\n{raw_response}"
+                return jsonify({"error": error_message}), 500
 
-        return jsonify({"report": report_markdown}), 200
+            return jsonify({"report": report_markdown}), 200
+
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            print(f"AI API Error: {error_trace}")
+            return jsonify({"error": f"AI服务调用失败: {e}", "traceback": error_trace}), 503
 
     except Exception as e:
         error_trace = traceback.format_exc()
