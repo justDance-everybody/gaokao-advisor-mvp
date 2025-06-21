@@ -90,7 +90,10 @@ def handler():
             enrollment_data = json.load(f)
         
         prompt = prepare_prompt(user_data, enrollment_data)
-
+    
+    except FileNotFoundError:
+        print("FATAL: enrollment_data_2025.json not found. This is a deployment issue.")
+        return jsonify({"error": "服务器内部错误：关键数据文件丢失，请联系管理员。"}), 500
     except Exception as e:
         print(f"Prompt Prep Error: {e}")
         return jsonify({"error": "准备分析数据时出错。"}), 500
