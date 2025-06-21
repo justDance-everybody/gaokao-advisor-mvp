@@ -1,11 +1,9 @@
 import os
 import json
+import traceback
 from flask import Flask, request, jsonify
 from vercel_kv import KV
-
 from openai import OpenAI
-# The KV client will be instantiated inside the handler functions
-# to ensure environment variables are available.
 
 # --- Configuration ---
 DAILY_LIMIT = 1000
@@ -15,15 +13,11 @@ KV_KEY = 'daily_requests_count'
 app = Flask(__name__)
 
 def prepare_prompt(user_data, enrollment_data):
-    # This is the core of the AI's instruction.
-    # It needs to be carefully crafted to get the desired output.
-    
+    # ... (omitted for brevity, no changes here)
     user_info = user_data.get('rawText', '')
     province = user_data.get('province', '未知')
     rank = user_data.get('rank', '未知')
     enrollment_info = json.dumps(enrollment_data.get('data', {}), ensure_ascii=False, indent=2)
-
-
     prompt = f"""
     你是一位顶级的、资深的、充满智慧的高考志愿填报专家。你的任务是为一位正在纠结中的高三学生或家长，提供一份专业、客观、有深度、有温度的志愿对比分析报告。
 
@@ -60,89 +54,82 @@ def prepare_prompt(user_data, enrollment_data):
     """
     return prompt
 
-# The route must match the full path the browser is requesting.
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    # 1. Parse User Data FIRST
+    # Ultimate error catching block to ensure we always get a detailed error
     try:
-        body = request.get_json(silent=True)
-        if not body or 'userInput' not in body:
-            return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
-        user_data = body.get('userInput', {})
+        # 1. Parse User Data FIRST
+        try:
+            body = request.get_json(silent=True)
+            if not body or 'userInput' not in body:
+                return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
+            user_data = body.get('userInput', {})
+        except Exception as e:
+            print(f"Data Parse Error: {e}")
+            return jsonify({"error": f"解析用户数据时出错: {e}"}), 500
+
+        # 2. Cost Control & Safety Check
+        try:
+            kv = KV()
+            count = kv.get(KV_KEY) or 0
+            if count >= DAILY_LIMIT:
+                return jsonify({"error": "非常抱歉，今日的免费体验名额已被抢完！请您明日再来。"}), 429
+        except Exception as e:
+            print(f"KV Error: {e}")
+            # Be more specific if it's a connection issue
+            return jsonify({"error": f"数据库连接失败，请检查Vercel KV环境变量配置。错误: {e}"}), 500
+
+        # 3. Prepare Prompt
+        try:
+            enrollment_data_path = os.path.join(os.path.dirname(__file__), '_data', 'enrollment_data_2025.json')
+            with open(enrollment_data_path, 'r', encoding='utf-8') as f:
+                enrollment_data = json.load(f)
+            prompt = prepare_prompt(user_data, enrollment_data)
+        except FileNotFoundError:
+            print("FATAL: enrollment_data_2025.json not found. This is a deployment issue.")
+            return jsonify({"error": "服务器内部错误：关键数据文件丢失。请检查vercel.json中的includeFiles配置。"}), 500
+        except Exception as e:
+            print(f"Prompt Prep Error: {e}")
+            return jsonify({"error": f"准备分析数据时出错: {e}"}), 500
+
+        # 4. Call AI API
+        try:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            base_url = os.environ.get("OPENAI_API_BASE")
+            if not api_key or not base_url:
+                raise ValueError("OPENAI_API_KEY or OPENAI_API_BASE not found in environment variables.")
+            client = OpenAI(api_key=api_key, base_url=base_url)
+            model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_name,
+            )
+            report_markdown = chat_completion.choices[0].message.content
+        except Exception as e:
+            print(f"AI API Error: {e}")
+            return jsonify({"error": f"AI服务调用失败: {e}"}), 503
+
+        # 5. Update Counter & Return Result
+        try:
+            kv = KV()
+            kv.incr(KV_KEY)
+        except Exception as e:
+            print(f"KV increment failed: {e}")
+
+        return jsonify({"report": report_markdown}), 200
+
     except Exception as e:
-        print(f"Data Parse Error: {e}")
-        return jsonify({"error": "解析用户数据时出错。"}), 500
-
-    # 2. Cost Control & Safety Check
-    try:
-        kv = KV()
-        count = kv.get(KV_KEY) or 0
-        if count >= DAILY_LIMIT:
-            return jsonify({"error": "非常抱歉，今日的免费体验名额已被抢完！请您明日再来。"}), 429
-    except Exception as e:
-        print(f"KV Error: {e}")
-        return jsonify({"error": "服务暂时不可用，无法连接到数据库。"}), 500
-
-    # 3. Prepare Prompt
-    try:
-        enrollment_data_path = os.path.join(os.path.dirname(__file__), '_data', 'enrollment_data_2025.json')
-        with open(enrollment_data_path, 'r', encoding='utf-8') as f:
-            enrollment_data = json.load(f)
-        
-        prompt = prepare_prompt(user_data, enrollment_data)
-    
-    except FileNotFoundError:
-        print("FATAL: enrollment_data_2025.json not found. This is a deployment issue.")
-        return jsonify({"error": "服务器内部错误：关键数据文件丢失，请联系管理员。"}), 500
-    except Exception as e:
-        print(f"Prompt Prep Error: {e}")
-        return jsonify({"error": "准备分析数据时出错。"}), 500
-
-    # 4. Call AI API
-    try:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        base_url = os.environ.get("OPENAI_API_BASE")
-
-        if not api_key or not base_url:
-            raise ValueError("OPENAI_API_KEY or OPENAI_API_BASE not found in environment variables.")
-
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
-
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            model=model_name,
-        )
-        report_markdown = chat_completion.choices[0].message.content
-
-    except Exception as e:
-        print(f"AI API Error: {e}")
-        return jsonify({"error": "AI服务暂时无法响应，请稍后重试。"}), 503
-
-    # 5. Update Counter & Return Result
-    try:
-        # Use atomic increment for safety and correctness
-        # Re-instantiate kv in case it was not created in the check block
-        kv = KV()
-        kv.incr(KV_KEY)
-    except Exception as e:
-        # If increment fails, it's not critical enough to fail the whole request.
-        # Log it for monitoring.
-        print(f"KV increment failed: {e}")
-
-    return jsonify({"report": report_markdown}), 200
+        # This is the final catch-all. It will catch any unexpected error.
+        error_trace = traceback.format_exc()
+        print(f"UNHANDLED EXCEPTION: {error_trace}")
+        return jsonify({
+            "error": "服务器发生未知致命错误。",
+            "traceback": error_trace
+        }), 500
 
 @app.route('/api/cron/reset', methods=['GET'])
 def reset_counter():
-    """
-    A dedicated endpoint for a Vercel Cron Job to call daily.
-    Resets the daily request counter to 0.
-    """
+    # ... (omitted for brevity, no changes here)
     try:
         kv = KV()
         kv.set(KV_KEY, 0)
@@ -151,7 +138,5 @@ def reset_counter():
         print(f"Cron job failed to reset counter: {e}")
         return jsonify({"error": "Failed to reset counter."}), 500
 
-
-# This check allows running the app locally for development
 if __name__ == "__main__":
     app.run(debug=True)
