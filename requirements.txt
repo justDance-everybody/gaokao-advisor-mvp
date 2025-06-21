@@ -1,6 +1,6 @@
 Flask
-vercel-kv
 openai
 pytest
 pytest-mock
-pytest-dotenv
+gunicorn
+redis

@@ -1,16 +1,31 @@
 import os
 import json
 import traceback
-from flask import Flask, request, jsonify
-from vercel_kv import KV
+from flask import Flask, request, jsonify, send_from_directory
 from openai import OpenAI
+import redis
 
 # --- Configuration ---
 DAILY_LIMIT = 1000
 KV_KEY = 'daily_requests_count'
 
-# Create a Flask app instance
-app = Flask(__name__)
+# Connect to Redis. The connection details are retrieved from environment variables.
+# This allows flexibility for different environments (local dev vs. Docker).
+try:
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+    kv = redis.from_url(redis_url, decode_responses=True)
+    # Test connection
+    kv.ping()
+    print("Successfully connected to Redis.")
+except redis.exceptions.ConnectionError as e:
+    print("Could not connect to Redis. Please ensure Redis is running and REDIS_URL is set correctly.")
+    print(f"Error: {e}")
+    # In a real app, you might want to exit or have a fallback.
+    # For now, we'll let it fail on the first request.
+    kv = None
+
+# Create a Flask app instance that serves static files from the root
+app = Flask(__name__, static_url_path='', static_folder='.')
 
 def prepare_prompt(user_data, enrollment_data):
     # ... (omitted for brevity, no changes here)
@@ -54,25 +69,20 @@ def prepare_prompt(user_data, enrollment_data):
     """
     return prompt
 
+# --- Static File Routes ---
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    # This will serve style.css, script.js, and other files
+    return send_from_directory('.', path)
+
+# --- API Route ---
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    # Ultimate error catching block to ensure we always get a detailed error
     try:
-        # Handle Vercel Cron Job execution
-        if 'X-Vercel-Cron-Secret' in request.headers:
-            secret = request.headers.get('X-Vercel-Cron-Secret')
-            if secret == os.environ.get('CRON_SECRET'):
-                try:
-                    kv = KV()
-                    kv.set(KV_KEY, 0)
-                    print("Cron job: Daily counter reset successfully.")
-                    return jsonify({"status": "OK", "message": "Counter reset."}), 200
-                except Exception as e:
-                    print(f"Cron job failed: {e}")
-                    return jsonify({"status": "Error", "message": "Cron job failed."}), 500
-            else:
-                return jsonify({"status": "Error", "message": "Unauthorized cron job."}), 401
-
         # 1. Parse User Data FIRST
         try:
             body = request.get_json(silent=True)
@@ -84,25 +94,27 @@ def handler():
             return jsonify({"error": f"解析用户数据时出错: {e}"}), 500
 
         # 2. Cost Control & Safety Check
+        if not kv:
+            return jsonify({"error": "数据库服务未连接，请检查服务器配置。"}), 500
         try:
-            kv = KV()
-            count = kv.get(KV_KEY) or 0
+            count = kv.get(KV_KEY)
+            count = int(count) if count else 0
             if count >= DAILY_LIMIT:
                 return jsonify({"error": "非常抱歉，今日的免费体验名额已被抢完！请您明日再来。"}), 429
         except Exception as e:
             print(f"KV Error: {e}")
-            # Be more specific if it's a connection issue
-            return jsonify({"error": f"数据库连接失败，请检查Vercel KV环境变量配置。错误: {e}"}), 500
+            return jsonify({"error": f"数据库操作失败: {e}"}), 500
 
         # 3. Prepare Prompt
         try:
-            enrollment_data_path = os.path.join(os.path.dirname(__file__), '_data', 'enrollment_data_2025.json')
+            # The path is now relative to the root of the project
+            enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
             with open(enrollment_data_path, 'r', encoding='utf-8') as f:
                 enrollment_data = json.load(f)
             prompt = prepare_prompt(user_data, enrollment_data)
         except FileNotFoundError:
-            print("FATAL: enrollment_data_2025.json not found. This is a deployment issue.")
-            return jsonify({"error": "服务器内部错误：关键数据文件丢失。请检查vercel.json中的includeFiles配置。"}), 500
+            print(f"FATAL: {enrollment_data_path} not found.")
+            return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
         except Exception as e:
             print(f"Prompt Prep Error: {e}")
             return jsonify({"error": f"准备分析数据时出错: {e}"}), 500
@@ -126,15 +138,14 @@ def handler():
 
         # 5. Update Counter & Return Result
         try:
-            kv = KV()
             kv.incr(KV_KEY)
         except Exception as e:
+            # Not a critical failure, just log it.
             print(f"KV increment failed: {e}")
 
         return jsonify({"report": report_markdown}), 200
 
     except Exception as e:
-        # This is the final catch-all. It will catch any unexpected error.
         error_trace = traceback.format_exc()
         print(f"UNHANDLED EXCEPTION: {error_trace}")
         return jsonify({
@@ -143,4 +154,6 @@ def handler():
         }), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Use a production-ready server like gunicorn for Docker
+    # For local development, Flask's built-in server is fine.
+    app.run(debug=True, host='0.0.0.0', port=5000)

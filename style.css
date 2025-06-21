@@ -192,3 +192,145 @@ textarea {
         font-size: 1rem;
     }
 }
+/* --- Form Group Styling --- */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #4a5568;
+    text-align: left;
+}
+
+select, .radio-group, .slider-group {
+    width: 100%;
+}
+
+select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    background-color: #fff;
+}
+
+/* --- Radio Button Styling --- */
+.radio-group {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.radio-group input[type="radio"] {
+    opacity: 0;
+    position: fixed;
+    width: 0;
+}
+
+.radio-group label {
+    display: inline-block;
+    background-color: #e2e8f0;
+    padding: 8px 16px;
+    font-family: sans-serif, Arial;
+    font-size: 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-group input[type="radio"]:checked + label {
+    background-color: #dbeafe;
+    border-color: #3182ce;
+    color: #2b6cb0;
+}
+
+/* --- Slider Styling --- */
+.slider-group {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.slider-group input[type="number"] {
+    width: 120px;
+    margin-bottom: 0;
+}
+
+.slider-group input[type="range"] {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    background: #d3d3d3;
+    outline: none;
+    opacity: 0.7;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+    border-radius: 5px;
+}
+
+.slider-group input[type="range"]:hover {
+    opacity: 1;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #3182ce;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.slider-group input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #3182ce;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.slider-group #rank-slider-value {
+    font-weight: bold;
+    min-width: 60px;
+    text-align: right;
+}
+/* --- AutoComplete Styling --- */
+.auto-complete-container {
+    position: relative;
+}
+
+.autocomplete-suggestions {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    z-index: 99;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.autocomplete-suggestion {
+    padding: 10px;
+    cursor: pointer;
+}
+
+.autocomplete-suggestion:hover {
+    background-color: #f4f7f9;
+}
+
+.autocomplete-suggestion.selected {
+    background-color: #dbeafe;
+}

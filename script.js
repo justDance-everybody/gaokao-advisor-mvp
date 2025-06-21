@@ -1,21 +1,47 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // --- Autocomplete Data Loading ---
+    let suggestions = [];
+    try {
+        const response = await fetch('api/_data/enrollment_data_2025.json');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // Flatten the data to get a list of all school and major names
+        Object.values(data.data).forEach(province => {
+            Object.values(province).forEach(stream => {
+                Object.keys(stream).forEach(school => {
+                    suggestions.push(school);
+                    Object.keys(stream[school]).forEach(major => {
+                        suggestions.push(`${school} ${major}`);
+                    });
+                });
+            });
+        });
+        suggestions = [...new Set(suggestions)]; // Remove duplicates
+    } catch (error) {
+        console.error("Failed to load autocomplete suggestions:", error);
+    }
+
+    // --- Element Cache ---
     const submissionView = document.getElementById('submission-view');
     const waitingView = document.getElementById('waiting-view');
     const reportView = document.getElementById('report-view');
     const errorView = document.getElementById('error-view');
-
     const submitButton = document.getElementById('submit-button');
     const shareButton = document.getElementById('share-button');
-    
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
+    const rankInput = document.getElementById('rank-input');
+    const rankSlider = document.getElementById('rank-slider');
+    const rankSliderValue = document.getElementById('rank-slider-value');
+    const scoreTypeGroup = document.getElementById('score-type-group');
 
     // --- Tab Navigation ---
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             tabButtons.forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
-
             tabContents.forEach(content => content.classList.remove('active'));
             document.getElementById(button.dataset.tab).classList.add('active');
         });
@@ -25,28 +51,79 @@ document.addEventListener('DOMContentLoaded', () => {
     submitButton.addEventListener('click', handleSubmit);
     shareButton.addEventListener('click', handleShare);
 
+    // Score/Rank Input Logic
+    if (rankInput && rankSlider && rankSliderValue) {
+        rankSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            rankInput.value = value;
+            rankSliderValue.textContent = value;
+        });
+        rankInput.addEventListener('input', (e) => {
+            const value = e.target.value;
+            if (value && parseInt(value) <= parseInt(rankSlider.max) && parseInt(value) >= parseInt(rankSlider.min)) {
+               rankSlider.value = value;
+               rankSliderValue.textContent = value;
+            }
+        });
+    }
+
+    // Score/Rank Type Switcher Logic
+    if (scoreTypeGroup) {
+        scoreTypeGroup.addEventListener('change', (e) => {
+            const type = e.target.value;
+            if (type === 'score') {
+                rankInput.placeholder = "例如: 650";
+                rankSlider.min = 150;
+                rankSlider.max = 750;
+                rankSlider.step = 1;
+                rankSlider.value = 500;
+                rankSliderValue.textContent = 500;
+                rankInput.value = 500;
+            } else { // rank
+                rankInput.placeholder = "例如: 12000";
+                rankSlider.min = 1;
+                rankSlider.max = 750000;
+                rankSlider.step = 100;
+                rankSlider.value = 100000;
+                rankSliderValue.textContent = 100000;
+                rankInput.value = 100000;
+            }
+        });
+    }
+
+    // --- Autocomplete Initialization ---
+    if (suggestions.length > 0) {
+        new autoComplete({
+            selector: '#options-input',
+            minChars: 1,
+            source: function(term, suggest){
+                term = term.toLowerCase();
+                const choices = suggestions;
+                const matches = [];
+                for (let i=0; i<choices.length; i++)
+                    if (~choices[i].toLowerCase().indexOf(term)) matches.push(choices[i]);
+                suggest(matches);
+            }
+        });
+    }
+
     // --- Main Handler Functions ---
     async function handleSubmit() {
         showLoadingState();
-
         try {
             const userInput = await getUserInput();
-
             if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
                  showErrorState("输入内容不能为空，请填写或上传您的方案。");
-                 // Restore the initial view to allow user to try again
                  submissionView.style.display = 'block';
                  waitingView.style.display = 'none';
                  submitButton.disabled = false;
                  return;
             }
-
             const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
             });
-
             if (!response.ok) {
                 let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
                 try {
@@ -57,21 +134,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 throw new Error(errorText);
             }
-
             const data = await response.json();
             const reportHtml = marked.parse(data.report);
             showReportState(reportHtml);
-
         } catch (error) {
             console.error("Submit/Fetch Error:", error);
-            
             let detailedErrorMessage = "网络请求失败！\n\n";
             detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
             detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
             detailedErrorMessage += "--- 技术调试信息 ---\n";
             detailedErrorMessage += `错误类型: ${error.name}\n`;
             detailedErrorMessage += `错误信息: ${error.message}\n`;
-            
             showErrorState(detailedErrorMessage);
         }
     }
@@ -86,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(() => console.log('Successful share'))
             .catch((error) => console.log('Error sharing', error));
         } else {
-            // Fallback for desktops
             navigator.clipboard.writeText(window.location.href).then(() => {
                 alert('报告链接已复制到剪贴板！');
             }, () => {
@@ -113,7 +185,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showErrorState(message) {
-        // Use <pre> tag to preserve formatting of the detailed error message
         document.getElementById('error-message').innerHTML = `<pre>${message}</pre>`;
         waitingView.style.display = 'none';
         submissionView.style.display = 'none';
@@ -126,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function getUserInput() {
         const activeTab = document.querySelector('.tab-button.active').dataset.tab;
         let rawText = "";
-        let province = "", stream = "", rank = "", options = "", dilemma = "";
+        let province = "", stream = "", rank = "";
 
         if (activeTab === 'paste') {
             rawText = document.getElementById('raw-text-input').value;
@@ -150,22 +221,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         } else if (activeTab === 'fill') {
-            province = document.getElementById('province-input').value;
-            stream = document.getElementById('stream-input').value;
+            province = document.getElementById('province-select').value;
+            const selectedStream = document.querySelector('input[name="stream"]:checked');
+            stream = selectedStream ? selectedStream.value : '';
             rank = document.getElementById('rank-input').value;
-            options = document.getElementById('options-input').value;
-            dilemma = document.getElementById('dilemma-input').value;
-            rawText = `省份: ${province}\n科类: ${stream}\n分数/位次: ${rank}\n方案: ${options}\n困惑: ${dilemma}`;
+            const options = document.getElementById('options-input').value;
+            const dilemma = document.getElementById('dilemma-input').value;
+            const scoreType = document.querySelector('input[name="score_type"]:checked').value;
+            const scoreLabel = scoreType === 'score' ? '分数' : '位次';
+            
+            rawText = `
+省份: ${province}
+科类: ${stream}
+${scoreLabel}: ${rank}
+纠结的方案: 
+${options}
+我的主要困惑: 
+${dilemma}
+            `.trim();
         }
 
-        const finalProvince = province || document.getElementById('province-input').value;
-        const finalStream = stream || document.getElementById('stream-input').value;
-        const finalRank = rank || document.getElementById('rank-input').value;
-
         return {
-            province: finalProvince,
-            stream: finalStream,
-            rank: finalRank ? parseInt(finalRank, 10) : null,
+            province: province,
+            stream: stream,
+            rank: rank ? parseInt(rank, 10) : null,
             rawText: rawText,
         };
     }
