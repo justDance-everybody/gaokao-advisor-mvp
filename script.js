@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error("Fetch Error:", error);
+            console.error("A network error occurred. This is often because the API server is not running or reachable. If you are running this locally, please ensure you have started the server using 'vercel dev' and are accessing the site via the provided localhost URL, not by opening the HTML file directly.");
             showErrorState("网络请求失败，请检查您的网络连接或稍后重试。");
         }
     }
