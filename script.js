@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupCollapsibleSections();
 
     // --- Event Listeners ---
-    submitButton.addEventListener('click', handleSubmit);
+    submitButton.addEventListener('click', () => window.handleSubmit());
 
     if (rankInput && rankSlider && rankSliderValue) {
         rankSlider.addEventListener('input', (e) => {
@@ -134,14 +134,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Hook into the submit handler
-        const originalHandleSubmit = handleSubmit;
+        window.originalHandleSubmit = handleSubmit;
         window.handleSubmit = async function() {
             if (isMobile() && firstSubmit) {
                 submissionArea.classList.add('collapsed');
                 updateCollapseIcons();
                 firstSubmit = false;
             }
-            await originalHandleSubmit.apply(this, arguments);
+            await window.originalHandleSubmit.apply(this, arguments);
         }
     }
 
@@ -413,9 +413,6 @@ ${dilemma}
         };
     }
 
-    // Expose handleSubmit to the global scope if it's wrapped
-    if (window.handleSubmit) {
-        const originalOnload = document.querySelector('#submit-button').onclick;
-        document.querySelector('#submit-button').onclick = window.handleSubmit;
-    }
+    // Set the initial handleSubmit
+    window.handleSubmit = handleSubmit;
 });

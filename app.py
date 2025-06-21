@@ -129,7 +129,7 @@ def handler():
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
                 error_message = {'error': '服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。'}
-                yield f"event: error\ndata: {json.dumps(error_message)}\n\n"
+                yield f"event: error\ndata: {json.dumps(error_message, ensure_ascii=False)}\n\n"
                 return
             
             client = OpenAI(api_key=api_key, base_url=base_url)
@@ -152,7 +152,7 @@ def handler():
             error_trace = traceback.format_exc()
             print(f"UNHANDLED EXCEPTION IN STREAM: {error_trace}")
             error_message = { "error": f"服务器在与AI通信时发生错误: {e}", "traceback": error_trace }
-            yield f"event: error\ndata: {json.dumps(error_message)}\n\n"
+            yield f"event: error\ndata: {json.dumps(error_message, ensure_ascii=False)}\n\n"
 
     return Response(stream_response(prompt), mimetype='text/event-stream')
 
