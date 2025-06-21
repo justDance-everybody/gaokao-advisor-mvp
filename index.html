@@ -4,106 +4,83 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>高考志愿AI决策顾问</title>
-    <link rel="stylesheet" href="style.css?v=2.0.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=3.0.0">
 </head>
 <body>
-
-    <div id="app">
-        <!-- 视图一：信息提交页 -->
-        <div id="submission-view">
-            <h1>临门一脚还在纠结？</h1>
-            <p>免费获取您的专属AI志愿分析报告</p>
-            <div class="tab-container">
-                <div class="tab-nav">
-                    <button class="tab-button" data-tab="paste">直接粘贴笔记</button>
-                    <button class="tab-button" data-tab="upload">上传文档</button>
-                    <button class="tab-button active" data-tab="fill">快速填写</button>
+    <div class="container">
+        <!-- 左侧/顶部 信息提交区域 -->
+        <div class="submission-area">
+            <header>
+                <h1><i class="fas fa-user-edit"></i> 填写您的信息</h1>
+            </header>
+            <div class="form-container">
+                <div class="form-group">
+                    <label for="province-select">选择省份:</label>
+                    <select id="province-select">
+                        <option value="">请选择</option>
+                        <option value="北京">北京</option> <option value="天津">天津</option> <option value="河北">河北</option>
+                        <option value="山西">山西</option> <option value="内蒙古">内蒙古</option> <option value="辽宁">辽宁</option>
+                        <option value="吉林">吉林</option> <option value="黑龙江">黑龙江</option> <option value="上海">上海</option>
+                        <option value="江苏">江苏</option> <option value="浙江">浙江</option> <option value="安徽">安徽</option>
+                        <option value="福建">福建</option> <option value="江西">江西</option> <option value="山东">山东</option>
+                        <option value="河南">河南</option> <option value="湖北">湖北</option> <option value="湖南">湖南</option>
+                        <option value="广东">广东</option> <option value="广西">广西</option> <option value="海南">海南</option>
+                        <option value="重庆">重庆</option> <option value="四川">四川</option> <option value="贵州">贵州</option>
+                        <option value="云南">云南</option> <option value="西藏">西藏</option> <option value="陕西">陕西</option>
+                        <option value="甘肃">甘肃</option> <option value="青海">青海</option> <option value="宁夏">宁夏</option>
+                        <option value="新疆">新疆</option> <option value="台湾">台湾</option> <option value="香港">香港</option>
+                        <option value="澳门">澳门</option>
+                    </select>
                 </div>
-                <div id="paste" class="tab-content">
-                    <textarea id="raw-text-input" placeholder="请将您纠结的几个方案、您的分数位次、以及您的困惑，全部粘贴在这里。格式不限，越详细越好。"></textarea>
-                </div>
-                <div id="upload" class="tab-content">
-                    <input type="file" id="file-input" accept=".doc,.docx,.txt,.jpg,.png,.excel">
-                    <p id="file-name-display"></p>
-                </div>
-                <div id="fill" class="tab-content active">
-                    <div class="form-group">
-                        <label for="province-select">选择省份:</label>
-                        <select id="province-select">
-                            <option value="">请选择</option>
-                            <option value="北京">北京</option> <option value="天津">天津</option> <option value="河北">河北</option>
-                            <option value="山西">山西</option> <option value="内蒙古">内蒙古</option> <option value="辽宁">辽宁</option>
-                            <option value="吉林">吉林</option> <option value="黑龙江">黑龙江</option> <option value="上海">上海</option>
-                            <option value="江苏">江苏</option> <option value="浙江">浙江</option> <option value="安徽">安徽</option>
-                            <option value="福建">福建</option> <option value="江西">江西</option> <option value="山东">山东</option>
-                            <option value="河南">河南</option> <option value="湖北">湖北</option> <option value="湖南">湖南</option>
-                            <option value="广东">广东</option> <option value="广西">广西</option> <option value="海南">海南</option>
-                            <option value="重庆">重庆</option> <option value="四川">四川</option> <option value="贵州">贵州</option>
-                            <option value="云南">云南</option> <option value="西藏">西藏</option> <option value="陕西">陕西</option>
-                            <option value="甘肃">甘肃</option> <option value="青海">青海</option> <option value="宁夏">宁夏</option>
-                            <option value="新疆">新疆</option> <option value="台湾">台湾</option> <option value="香港">香港</option>
-                            <option value="澳门">澳门</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>选择科类:</label>
-                        <div class="radio-group">
-                            <input type="radio" id="stream-physics" name="stream" value="物理类" checked>
-                            <label for="stream-physics">物理类</label>
-                            <input type="radio" id="stream-history" name="stream" value="历史类">
-                            <label for="stream-history">历史类</label>
-                            <input type="radio" id="stream-reform" name="stream" value="不分科(综合改革)">
-                            <label for="stream-reform">不分科</label>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>填写分数或位次:</label>
-                        <div class="radio-group" id="score-type-group">
-                            <input type="radio" id="type-rank" name="score_type" value="rank" checked>
-                            <label for="type-rank">按位次</label>
-                            <input type="radio" id="type-score" name="score_type" value="score">
-                            <label for="type-score">按分数</label>
-                        </div>
-                        <div class="slider-group">
-                            <input type="number" id="rank-input" placeholder="例如: 12000" min="1" max="750000">
-                            <input type="range" id="rank-slider" min="1" max="750000" value="100000" step="100">
-                            <span id="rank-slider-value">100000</span>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="options-input">您纠结的方案 (例如: A学校B专业 vs C学校D专业):</label>
-                        <textarea id="options-input" placeholder="方案A vs 方案B..."></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="dilemma-input">您的主要困惑是什么？</label>
-                        <textarea id="dilemma-input" placeholder="例如：城市、专业前景、学校名气等..."></textarea>
+                <div class="form-group">
+                    <label>选择科类:</label>
+                    <div class="radio-group">
+                        <input type="radio" id="stream-physics" name="stream" value="物理类" checked>
+                        <label for="stream-physics">物理类</label>
+                        <input type="radio" id="stream-history" name="stream" value="历史类">
+                        <label for="stream-history">历史类</label>
+                        <input type="radio" id="stream-reform" name="stream" value="不分科">
+                        <label for="stream-reform">不分科</label>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label>填写分数或位次:</label>
+                    <div class="radio-group" id="score-type-group">
+                        <input type="radio" id="type-rank" name="score_type" value="rank" checked>
+                        <label for="type-rank">按位次</label>
+                        <input type="radio" id="type-score" name="score_type" value="score">
+                        <label for="type-score">按分数</label>
+                    </div>
+                    <div class="slider-group">
+                        <input type="number" id="rank-input" placeholder="例如: 12000" min="1" max="750000">
+                        <input type="range" id="rank-slider" min="1" max="750000" value="100000" step="100">
+                        <span id="rank-slider-value">100000</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="options-input">您纠结的方案 (例如: A校B专业 vs C校D专业):</label>
+                    <textarea id="options-input" placeholder="方案A vs 方案B..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="dilemma-input">您的主要困惑是什么？</label>
+                    <textarea id="dilemma-input" placeholder="例如：城市、专业前景、学校名气等..."></textarea>
+                </div>
+                <button id="submit-button"><i class="fas fa-paper-plane"></i> 生成分析报告</button>
             </div>
-            <button id="submit-button">立即生成我的分析报告</button>
         </div>
 
-        <!-- 视图二：等待页 -->
-        <div id="waiting-view" style="display: none;">
-            <div class="loader"></div>
-            <p>我们已收到您的信息，强大的AI决策顾问正在为您进行多维度分析，并结合2025年最新招生数据进行演算。预计需要30-60秒，请您耐心等待...</p>
-        </div>
-
-        <!-- 视图三：AI分析报告展示页 -->
-        <div id="report-view" style="display: none;">
-            <h1>您的专属AI决策顾问分析报告</h1>
-            <div id="report-content"></div>
-            <button id="share-button">分享给朋友</button>
-        </div>
-
-        <!-- 视图四：异常与限制状态页 -->
-        <div id="error-view" style="display: none;">
-            <p id="error-message"></p>
+        <!-- 右侧/下部 报告展示区域 -->
+        <div class="report-main-area">
+            <header><h1><i class="fas fa-brain"></i> AI决策顾问分析报告</h1></header>
+            <div id="report-container">
+                <!-- Bot messages will be appended here -->
+            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/Pixabay/JavaScript-autoComplete@v1.0.4/auto-complete.min.js"></script>
-    <script src="script.js?v=2.0.0"></script>
+    <script src="script.js?v=3.0.0"></script>
 </body>
 </html>

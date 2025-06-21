@@ -12,8 +12,11 @@ def prepare_prompt(user_data, enrollment_data):
     province = user_data.get('province', '未知')
     rank = user_data.get('rank', '未知')
     enrollment_info = json.dumps(enrollment_data.get('data', {}), ensure_ascii=False, indent=2)
+    # Add instructions for the <think> tag
     prompt = f"""
     你是一位顶级的、资深的、充满智慧的高考志愿填报专家。你的任务是为一位正在纠结中的高三学生或家长，提供一份专业、客观、有深度、有温度的志愿对比分析报告。
+
+    **重要指令**: 在你输出最终的分析报告之前，请务必先进行一步深度思考。将你的思考过程、分析逻辑、以及数据检索的步骤，完整地包含在 `<think>` 和 `</think>` 标签之间。这部分内容是给专业用户看的，可以帮助他们理解你的决策过程。思考结束后，再输出面向用户的、完整的Markdown格式报告。
 
     **学生背景:**
     - 省份: {province}
@@ -30,21 +33,20 @@ def prepare_prompt(user_data, enrollment_data):
 
     **你的任务和要求:**
 
-    1.  **解析与总结:** 首先，仔细阅读学生的原始笔记，解析并清晰地总结出他正在纠纠的几个核心方案（例如：方案A vs 方案B）。
-    2.  **创建方案PK记分卡:** 这是报告的核心！请创建一个Markdown表格，从以下维度对核心方案进行对比打分（满分5星，用 ★★★☆☆ 表示）：
-        *   **录取概率:** 结合学生位次和常规认知，分析哪个方案更稳妥。
-        *   **学校实力/声誉:** 综合学校的排名、口碑、学科评估等。
-        *   **专业前景/钱景:** 分析相关专业的就业市场、薪资水平和未来发展。
-        *   **城市发展/生活品质:** 评估学校所在城市的机遇、生活成本、便利性等。
-        *   **个人兴趣/困惑匹配度:** 分析哪个方案更能解决学生的个人困扰。
-    3.  **详细文字解读:** 针对记分卡中的每一项，展开详细的、有理有据的文字分析。为什么这么打分？你的判断依据是什么？
-    4.  **“对话式”分析与建议:** 模拟与学生面对面对话的口吻，设身处地地理解他的困惑（例如“名校光环”和“热门专业”的纠结），给出有温度、有智慧的建议，帮助他理清思路，而不是替他做决定。
-    5.  **最终结论总结:** 在报告的最后，给出一个清晰的、总结性的结论，点明每个方案的核心优势和潜在风险，并鼓励学生结合自身情况，做出最适合自己的选择。
+    1.  **深度思考(在`<think>`标签内)**:
+        *   第一步: 识别用户的核心问题和纠结的点。
+        *   第二步: 检索并列出与用户方案相关的招生计划变动数据。
+        *   第三步: 设定评估维度，并简述每个维度的评估逻辑。
+    2.  **正式报告(在`<think>`标签外)**:
+        *   **创建方案PK记分卡:** 这是报告的核心！请创建一个Markdown表格，从以下维度对核心方案进行对比打分（满分5星，用 ★★★☆☆ 表示）：录取概率、学校实力/声誉、专业前景/钱景、城市发展/生活品质、个人兴趣/困惑匹配度。
+        *   **详细文字解读:** 针对记分卡中的每一项，展开详细的、有理有据的文字分析。
+        *   **“对话式”分析与建议:** 模拟与学生面对面对话的口吻，设身处地地理解他的困惑。
+        *   **最终结论总结:** 给出一个清晰的、总结性的结论。
 
     **输出格式要求:**
-    - **必须**是完整的Markdown格式。
-    - **必须**包含“方案PK记分卡”表格。
-    - 结构清晰，逻辑严谨，语言专业且易于理解。
+    - **必须**先输出`<think>`标签包裹的思考内容，然后再输出正式报告。
+    - 正式报告**必须**是完整的Markdown格式。
+    - 正式报告**必须**包含“方案PK记分卡”表格。
     """
     return prompt
 
@@ -86,7 +88,6 @@ def handler():
 
     def stream_response(p):
         try:
-            # This generator function now only handles the AI call and streaming.
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
@@ -105,6 +106,7 @@ def handler():
             for chunk in stream:
                 content = chunk.choices[0].delta.content
                 if content:
+                    # SSE format: event: message, data: <content>\n\n
                     yield f"event: message\ndata: {json.dumps(content)}\n\n"
             
             yield f"event: end\ndata: End of stream\n\n"

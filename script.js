@@ -21,33 +21,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Element Cache ---
-    const submissionView = document.getElementById('submission-view');
-    const waitingView = document.getElementById('waiting-view');
-    const reportView = document.getElementById('report-view');
-    const errorView = document.getElementById('error-view');
     const submitButton = document.getElementById('submit-button');
-    const shareButton = document.getElementById('share-button');
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+    const reportContainer = document.getElementById('report-container');
     const rankInput = document.getElementById('rank-input');
     const rankSlider = document.getElementById('rank-slider');
     const rankSliderValue = document.getElementById('rank-slider-value');
     const scoreTypeGroup = document.getElementById('score-type-group');
-    const reportContent = document.getElementById('report-content');
-
-    // --- Tab Navigation ---
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            tabContents.forEach(content => content.classList.remove('active'));
-            document.getElementById(button.dataset.tab).classList.add('active');
-        });
-    });
 
     // --- Event Listeners ---
     submitButton.addEventListener('click', handleSubmit);
-    shareButton.addEventListener('click', handleShare);
 
     if (rankInput && rankSlider && rankSliderValue) {
         rankSlider.addEventListener('input', (e) => {
@@ -107,12 +89,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function handleSubmit() {
         const userInput = await getUserInput();
         if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
-             showErrorState("输入内容不能为空，请填写或上传您的方案。");
+             alert("输入内容不能为空，请填写或上传您的方案。");
              return;
         }
 
-        showReportState(""); // Switch to report view immediately
+        // Create a new message container for this request
+        const botMessageDiv = createBotMessage();
+        const { thinkContainer, thinkContent, answerContent, toggleThink } = botMessageDiv;
+        
         let fullReport = "";
+        let inThinkBlock = false;
+        let thinkText = "";
+        let answerText = "";
+
+        submitButton.disabled = true;
 
         try {
             const response = await fetch('/api/handler', {
@@ -127,140 +117,135 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) {
-                    // The stream has been closed gracefully.
-                    break;
-                }
+                if (done) break;
 
-                buffer += decoder.decode(value, { stream: true });
-                
-                // Process all complete messages in the buffer.
-                let boundary = buffer.indexOf('\n\n');
-                while (boundary !== -1) {
-                    const message = buffer.substring(0, boundary);
-                    buffer = buffer.substring(boundary + 2);
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n\n');
 
-                    if (message.startsWith('event: message')) {
-                        const data = message.substring(message.indexOf('data: ') + 6);
+                for (const line of lines) {
+                    if (line.startsWith('event: message')) {
+                        const data = line.substring(line.indexOf('data: ') + 6);
                         try {
                             const token = JSON.parse(data);
                             fullReport += token;
-                            // To show the "typing" effect, we update the text content directly.
-                            // We use a <pre> tag to preserve whitespace and show the raw markdown.
-                            reportContent.innerHTML = `<pre>${fullReport}<span class="typing-cursor"></span></pre>`;
                         } catch (e) {
                             console.error("Failed to parse token:", data);
                         }
-                    } else if (message.startsWith('event: error')) {
-                        const data = message.substring(message.indexOf('data: ') + 6);
+                    } else if (line.startsWith('event: end')) {
+                        processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent, toggleThink);
+                        submitButton.disabled = false;
+                        return; 
+                    } else if (line.startsWith('event: error')) {
+                        const data = line.substring(line.indexOf('data: ') + 6);
                         try {
                             const errorData = JSON.parse(data);
-                            showErrorState(JSON.stringify(errorData, null, 2));
+                            answerContent.innerHTML = `<pre style="color:red;">${JSON.stringify(errorData, null, 2)}</pre>`;
                         } catch(e) {
-                            showErrorState(data);
+                            answerContent.innerHTML = `<pre style="color:red;">${data}</pre>`;
                         }
-                        return; // Stop processing on error
+                        submitButton.disabled = false;
+                        return; 
                     }
-                    boundary = buffer.indexOf('\n\n');
                 }
+                // Live rendering during streaming
+                renderLive(fullReport, thinkContainer, thinkContent, answerContent);
             }
-            
-            // Final render: Once the stream is done, parse the full markdown.
-            reportContent.innerHTML = marked.parse(fullReport);
+            // Final render in case stream ends without 'end' event
+            processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent, toggleThink);
 
         } catch(error) {
             console.error("Submit/Fetch Error:", error);
-            showErrorState(`网络请求失败: ${error.name === 'TypeError' ? 'network error' : error.message}`);
+            botMessageDiv.answerContent.innerHTML = `<pre style="color:red;">网络请求失败: ${error.message}</pre>`;
+        } finally {
+            submitButton.disabled = false;
         }
     }
 
-    function handleShare() {
-        if (navigator.share) {
-            navigator.share({
-                title: '我的AI志愿分析报告',
-                text: '快来看看AI为我生成的志愿决策分析报告！',
-                url: window.location.href,
-            })
-            .then(() => console.log('Successful share'))
-            .catch((error) => console.log('Error sharing', error));
+    function createBotMessage() {
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.className = 'bot-message';
+
+        const thinkContainer = document.createElement('div');
+        thinkContainer.className = 'think-container';
+        thinkContainer.style.display = 'none'; // Hide by default
+
+        const toggleThink = document.createElement('div');
+        toggleThink.className = 'toggle-think';
+        toggleThink.innerHTML = '展开AI思考过程 <i class="fas fa-chevron-down"></i>';
+        
+        const thinkContent = document.createElement('div');
+        thinkContent.className = 'think-content';
+
+        thinkContainer.appendChild(toggleThink);
+        thinkContainer.appendChild(thinkContent);
+
+        const answerContent = document.createElement('div');
+        answerContent.className = 'answer-content markdown-content';
+
+        botMessageDiv.appendChild(thinkContainer);
+        botMessageDiv.appendChild(answerContent);
+        
+        reportContainer.appendChild(botMessageDiv);
+        reportContainer.scrollTop = reportContainer.scrollHeight;
+
+        toggleThink.addEventListener('click', () => {
+            thinkContent.classList.toggle('expanded');
+            toggleThink.classList.toggle('expanded');
+            toggleThink.innerHTML = thinkContent.classList.contains('expanded') 
+                ? '收起AI思考过程 <i class="fas fa-chevron-down"></i>'
+                : '展开AI思考过程 <i class="fas fa-chevron-down"></i>';
+        });
+
+        return { thinkContainer, thinkContent, answerContent, toggleThink };
+    }
+
+    function renderLive(text, thinkContainer, thinkContent, answerContent) {
+        const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
+        let currentAnswer = text;
+
+        if (thinkMatch) {
+            const thinkText = thinkMatch[1];
+            currentAnswer = text.replace(thinkMatch[0], '');
+            thinkContainer.style.display = 'block';
+            thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
+        }
+        
+        answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
+        reportContainer.scrollTop = reportContainer.scrollHeight;
+    }
+
+    function processAndRenderFinalReport(text, thinkContainer, thinkContent, answerContent, toggleThink) {
+        const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
+        let finalAnswer = text;
+
+        if (thinkMatch && thinkMatch[1].trim()) {
+            const thinkText = thinkMatch[1];
+            finalAnswer = text.replace(thinkMatch[0], '');
+            thinkContainer.style.display = 'block';
+            thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
         } else {
-            navigator.clipboard.writeText(window.location.href).then(() => {
-                alert('报告链接已复制到剪贴板！');
-            }, () => {
-                alert('复制链接失败，请手动复制浏览器地址。');
-            });
+            thinkContainer.style.display = 'none';
         }
-    }
-
-    // --- UI State Management ---
-    function showLoadingState() {
-        submissionView.style.display = 'none';
-        reportView.style.display = 'none';
-        errorView.style.display = 'none';
-        waitingView.style.display = 'block';
-        submitButton.disabled = true;
-    }
-
-    function showReportState(htmlContent) {
-        reportContent.innerHTML = htmlContent;
-        waitingView.style.display = 'none';
-        submissionView.style.display = 'none';
-        errorView.style.display = 'none';
-        reportView.style.display = 'block';
-        submitButton.disabled = false;
-    }
-
-    function showErrorState(message) {
-        document.getElementById('error-message').innerHTML = `<pre>${message}</pre>`;
-        waitingView.style.display = 'none';
-        submissionView.style.display = 'none';
-        reportView.style.display = 'none';
-        errorView.style.display = 'block';
-        submitButton.disabled = false; 
+        
+        answerContent.innerHTML = marked.parse(finalAnswer);
+        reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
     // --- Data Gathering ---
     async function getUserInput() {
-        const activeTab = document.querySelector('.tab-button.active').dataset.tab;
-        let rawText = "";
-        let province = "", stream = "", rank = "";
-
-        if (activeTab === 'paste') {
-            rawText = document.getElementById('raw-text-input').value;
-        } else if (activeTab === 'upload') {
-            const fileInput = document.getElementById('file-input');
-            if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                rawText = await new Promise((resolve, reject) => {
-                    if (file.type.startsWith('image/')) {
-                        resolve(`用户上传了图片: ${file.name}。请注意，AI无法直接分析图片内容，请将图片中的文字手动粘贴。`);
-                        return;
-                    }
-                    if (file.type.includes('word')) {
-                         resolve(`用户上传了Word文档: ${file.name}。请注意，AI将尝试读取文本，但复杂格式可能无法解析。`);
-                         return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve(e.target.result);
-                    reader.onerror = (e) => reject(new Error("读取文件时出错"));
-                    reader.readAsText(file, 'UTF-8');
-                });
-            }
-        } else if (activeTab === 'fill') {
-            province = document.getElementById('province-select').value;
-            const selectedStream = document.querySelector('input[name="stream"]:checked');
-            stream = selectedStream ? selectedStream.value : '';
-            rank = document.getElementById('rank-input').value;
-            const options = document.getElementById('options-input').value;
-            const dilemma = document.getElementById('dilemma-input').value;
-            const scoreType = document.querySelector('input[name="score_type"]:checked').value;
-            const scoreLabel = scoreType === 'score' ? '分数' : '位次';
-            
-            rawText = `
+        const province = document.getElementById('province-select').value;
+        const selectedStream = document.querySelector('input[name="stream"]:checked');
+        const stream = selectedStream ? selectedStream.value : '';
+        const rank = document.getElementById('rank-input').value;
+        const options = document.getElementById('options-input').value;
+        const dilemma = document.getElementById('dilemma-input').value;
+        const scoreType = document.querySelector('input[name="score_type"]:checked').value;
+        const scoreLabel = scoreType === 'score' ? '分数' : '位次';
+        
+        const rawText = `
 省份: ${province}
 科类: ${stream}
 ${scoreLabel}: ${rank}
@@ -268,8 +253,7 @@ ${scoreLabel}: ${rank}
 ${options}
 我的主要困惑: 
 ${dilemma}
-            `.trim();
-        }
+        `.trim();
 
         return {
             province: province,
