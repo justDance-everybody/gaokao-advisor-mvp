@@ -1,26 +1,15 @@
 import pytest
 import json
-from unittest.mock import MagicMock, patch
-from http.server import BaseHTTPRequestHandler
-from io import BytesIO
+from unittest.mock import patch, MagicMock
 
-# Import the handler class from the actual handler file
-# We need to make sure the path is correct for pytest to find the module
-from api.handler import handler
-
-# --- Test Data Fixtures ---
+# Import the Flask app instance from your handler
+from api.handler import app
 
 @pytest.fixture
-def mock_request_factory():
-    """Factory to create a mock request object."""
-    def _create_mock_request(json_data):
-        request_body = json.dumps(json_data).encode('utf-8')
-        mock_request = MagicMock(spec=BaseHTTPRequestHandler)
-        mock_request.rfile = BytesIO(request_body)
-        mock_request.headers = {'Content-Length': str(len(request_body))}
-        mock_request.wfile = BytesIO() # To capture output
-        return mock_request
-    return _create_mock_request
+def client():
+    """Create a test client for the Flask app."""
+    with app.test_client() as client:
+        yield client
 
 @pytest.fixture
 def sample_user_data():
@@ -48,17 +37,13 @@ def sample_enrollment_data():
         }
     }
 
-# --- Test Cases ---
-
 def test_prepare_prompt_logic(sample_user_data, sample_enrollment_data):
     """
     Test Case 2.1: Validates that the prompt is correctly generated.
+    This test can remain as a direct unit test of the helper function.
     """
-    # Instantiate the handler to access its methods
-    h = handler(request=None, client_address=None, server=None)
-    
-    # Call the method to be tested
-    prompt = h.prepare_prompt(sample_user_data['userInput'], sample_enrollment_data)
+    from api.handler import prepare_prompt
+    prompt = prepare_prompt(sample_user_data['userInput'], sample_enrollment_data)
 
     # Assertions
     assert "王磊" in prompt
@@ -71,7 +56,7 @@ def test_prepare_prompt_logic(sample_user_data, sample_enrollment_data):
 
 @patch('api.handler.kv')
 @patch('api.handler.OpenAI')
-def test_quota_available(MockOpenAI, mock_kv, mock_request_factory, sample_user_data):
+def test_quota_available(MockOpenAI, mock_kv, client, sample_user_data):
     """
     Test Case 2.2.1: Validates behavior when quota is available.
     """
@@ -79,33 +64,27 @@ def test_quota_available(MockOpenAI, mock_kv, mock_request_factory, sample_user_
     mock_kv.get.return_value = 500
     mock_kv.incr.return_value = 501
     
-    # Mock OpenAI client and response
     mock_chat_completion = MagicMock()
     mock_chat_completion.choices[0].message.content = "This is a test report."
     MockOpenAI.return_value.chat.completions.create.return_value = mock_chat_completion
 
     # --- Execution ---
-    mock_request = mock_request_factory(sample_user_data)
-    
-    # To properly test the handler, we need to simulate the server environment
-    # or call the do_POST method directly.
-    h = handler(mock_request, ('127.0.0.1', 8000), None)
-    h.do_POST()
+    response = client.post('/api/handler', json=sample_user_data)
 
     # --- Assertions ---
-    mock_kv.get.assert_called_once_with('daily_requests_count')
-    MockOpenAI.return_value.chat.completions.create.assert_called_once()
-    mock_kv.incr.assert_called_once_with('daily_requests_count')
+    assert response.status_code == 200
+    response_data = response.get_json()
+    assert "report" in response_data
+    assert response_data["report"] == "This is a test report."
     
-    # Check response
-    mock_request.wfile.seek(0)
-    response_body = json.loads(mock_request.wfile.read())
-    assert "report" in response_body
-    assert response_body["report"] == "This is a test report."
-
+    # Assert that 'get' was called for the initial check
+    mock_kv.get.assert_any_call('daily_requests_count')
+    MockOpenAI.return_value.chat.completions.create.assert_called_once()
+    # Assert that 'set' was called to increment the value
+    mock_kv.set.assert_called_once_with('daily_requests_count', 501)
 
 @patch('api.handler.kv')
-def test_quota_exhausted(mock_kv, mock_request_factory, sample_user_data):
+def test_quota_exhausted(mock_kv, client, sample_user_data):
     """
     Test Case 2.2.2: Validates behavior when quota is exhausted.
     """
@@ -113,27 +92,17 @@ def test_quota_exhausted(mock_kv, mock_request_factory, sample_user_data):
     mock_kv.get.return_value = 1000 # The limit
 
     # --- Execution ---
-    mock_request = mock_request_factory(sample_user_data)
-    h = handler(mock_request, ('127.0.0.1', 8000), None)
-    
-    # We need to capture the response sent by the handler
-    with patch.object(h, 'send_response') as mock_send_response, \
-         patch.object(h, 'send_header'), \
-         patch.object(h, 'end_headers'):
-        h.do_POST()
+    response = client.post('/api/handler', json=sample_user_data)
 
-        # --- Assertions ---
-        mock_kv.get.assert_called_once_with('daily_requests_count')
-        mock_send_response.assert_called_once_with(429)
-        
-        h.wfile.seek(0)
-        response_body = json.loads(h.wfile.read())
-        assert "error" in response_body
-        assert "今日名额已满" in response_body["error"]
-
+    # --- Assertions ---
+    assert response.status_code == 429
+    response_data = response.get_json()
+    assert "error" in response_data
+    assert "今日的免费体验名额已被抢完" in response_data["error"]
+    mock_kv.get.assert_called_once_with('daily_requests_count')
 
 @patch('api.handler.kv')
-def test_kv_database_error(mock_kv, mock_request_factory, sample_user_data):
+def test_kv_database_error(mock_kv, client, sample_user_data):
     """
     Test Case 2.2.3: Validates behavior when the KV database fails.
     """
@@ -141,19 +110,19 @@ def test_kv_database_error(mock_kv, mock_request_factory, sample_user_data):
     mock_kv.get.side_effect = Exception("Connection Error")
 
     # --- Execution ---
-    mock_request = mock_request_factory(sample_user_data)
-    h = handler(mock_request, ('127.0.0.1', 8000), None)
+    response = client.post('/api/handler', json=sample_user_data)
 
-    with patch.object(h, 'send_response') as mock_send_response, \
-         patch.object(h, 'send_header'), \
-         patch.object(h, 'end_headers'):
-        h.do_POST()
+    # --- Assertions ---
+    assert response.status_code == 500
+    response_data = response.get_json()
+    assert "error" in response_data
+    assert "服务暂时不可用" in response_data["error"]
+    mock_kv.get.assert_called_once_with('daily_requests_count')
 
-        # --- Assertions ---
-        mock_kv.get.assert_called_once_with('daily_requests_count')
-        mock_send_response.assert_called_once_with(500)
-        
-        h.wfile.seek(0)
-        response_body = json.loads(h.wfile.read())
-        assert "error" in response_body
-        assert "服务暂时不可用" in response_body["error"]
+def test_bad_request_no_json(client):
+    """Tests server response when POST request has no JSON body."""
+    response = client.post('/api/handler', data="this is not json")
+    assert response.status_code == 400
+    response_data = response.get_json()
+    assert "error" in response_data
+    assert "请求格式错误" in response_data["error"]
