@@ -267,32 +267,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderLive(text, thinkContainer, thinkContent, answerContent) {
-        const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
+        const thinkBlockRegex = /<think>([\s\S]*)<\/think>/;
+        const thinkMatch = text.match(thinkBlockRegex);
+        
         let currentAnswer = text;
+        let currentThink = "";
+
         if (thinkMatch) {
-            const thinkText = thinkMatch[1];
-            currentAnswer = text.replace(thinkMatch[0], '');
-            if (thinkText.trim()) {
-                thinkContainer.style.display = 'block';
-                thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
-            }
+            // A complete <think>...</think> block exists.
+            currentThink = thinkMatch[1];
+            // The answer is whatever is AFTER the think block.
+            currentAnswer = text.substring(text.indexOf('</think>') + 8);
+        } else if (text.includes('<think>')) {
+            // The <think> tag has appeared, but not the closing tag.
+            // All content so far is part of the thinking process.
+            currentThink = text.substring(text.indexOf('<think>') + 7);
+            currentAnswer = ""; // No answer to display yet.
         }
-        // Only parse the part of the answer that is new
+
+        // Render the thinking part
+        if (currentThink.trim()) {
+            thinkContainer.style.display = 'block';
+            thinkContent.innerHTML = `<pre><code>${currentThink}</code></pre>`;
+        }
+
+        // Render the answer part
         answerContent.innerHTML = marked.parse(currentAnswer) + '<span class="typing-cursor"></span>';
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
 
     function processAndRenderFinalReport(text, thinkContainer, thinkContent, answerContent) {
-        const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
+        const thinkBlockRegex = /<think>([\s\S]*)<\/think>/;
+        const thinkMatch = text.match(thinkBlockRegex);
+        
         let finalAnswer = text;
-        if (thinkMatch && thinkMatch[1].trim()) {
-            const thinkText = thinkMatch[1];
-            finalAnswer = text.replace(thinkMatch[0], '');
+        let finalThink = "";
+
+        if (thinkMatch) {
+            finalThink = thinkMatch[1];
+            finalAnswer = text.substring(text.indexOf('</think>') + 8);
+        } else {
+            // If there's no complete think block, the whole text is the answer.
+            finalAnswer = text;
+        }
+
+        // Render the thinking part
+        if (finalThink.trim()) {
             thinkContainer.style.display = 'block';
-            thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
+            thinkContent.innerHTML = `<pre><code>${finalThink}</code></pre>`;
         } else {
             thinkContainer.style.display = 'none';
         }
+
+        // Render the answer part
         answerContent.innerHTML = marked.parse(finalAnswer);
         reportContainer.scrollTop = reportContainer.scrollHeight;
     }
