@@ -69,6 +69,9 @@ class handler(BaseHTTPRequestHandler):
 
             client = OpenAI(api_key=api_key, base_url=base_url)
 
+            # Get model name from environment variable, with a sensible default
+            model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
+
             chat_completion = client.chat.completions.create(
                 messages=[
                     {
@@ -76,7 +79,7 @@ class handler(BaseHTTPRequestHandler):
                         "content": prompt,
                     }
                 ],
-                model="gpt-4o",  # Using a powerful default model, can be changed
+                model=model_name,
             )
             report_markdown = chat_completion.choices[0].message.content
 

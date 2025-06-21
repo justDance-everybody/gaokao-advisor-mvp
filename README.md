@@ -20,10 +20,11 @@
 3.  **导入项目:** 在Vercel仪表盘中，选择 "Add New..." -> "Project"，然后选择您刚刚Fork/Clone的GitHub仓库。
 4.  **配置项目:** Vercel会自动识别本项目为Python环境。您无需修改构建和输出设置。
 5.  **配置环境变量 (关键步骤):**
-    *   在项目设置的 "Environment Variables" 区域，添加以下三个变量：
-    *   `OPENAI_API_KEY`: 您的OpenAI API密钥。
-    *   `OPENAI_API_BASE`: 您使用的兼容OpenAI API的地址 (Base URL)。
-    *   `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`: 这四个变量用于连接Vercel KV数据库。请在Vercel的 "Storage" 标签页创建一个新的KV数据库，Vercel会自动为您生成这些值并提示您添加到项目中。
+    *   在项目设置的 "Environment Variables" 区域，添加以下变量：
+        *   **`OPENAI_API_KEY` (必需):** 您的OpenAI API密钥。
+        *   **`OPENAI_API_BASE` (必需):** 您使用的兼容OpenAI API的地址 (Base URL)。
+        *   **`OPENAI_MODEL_NAME` (可选):** 您希望使用的模型名称。如果留空，将默认使用 `gpt-4o`。
+        *   **`KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN` (必需):** 这四个变量用于连接Vercel KV数据库。请在Vercel的 "Storage" 标签页创建一个新的KV数据库，Vercel会自动为您生成这些值并提示您添加到项目中。
 6.  **部署:** 点击 "Deploy" 按钮。Vercel会自动安装 `requirements.txt` 中的依赖，并将您的前端和后端部署到全球CDN网络。部署完成后，您将获得一个可公开访问的URL。
 
 ### 如何在本地运行测试
@@ -46,7 +47,19 @@
     ```bash
     pytest
     ```
-    *   您应该会看到所有测试都成功通过。
+    *   **重要提示**: 我编写的测试用例 (`api/test_handler.py`) 使用了“模拟”(Mocking)技术，它不会发出真实的API请求。因此，**您无需任何配置即可成功运行这套测试**。
+
+### 如何为本地真实API测试配置环境变量 (进阶)
+
+如果您想编写新的测试来真实地调用API，您需要为本地环境提供API密钥。
+
+1.  **创建`.env`文件:**
+    *   将项目中的 `.env.example` 文件复制一份，并重命名为 `.env`。
+2.  **填写密钥:**
+    *   打开 `.env` 文件，将 `OPENAI_API_KEY` 和 `OPENAI_API_BASE` 等变量替换为您的真实值。
+    *   `.env` 文件已被 gitignore，所以您的密钥不会被上传到代码库。
+3.  **运行测试:**
+    *   现在，当您运行 `pytest` 时，`pytest-dotenv` 插件会自动从 `.env` 文件中加载这些环境变量，您的测试代码便可以通过 `os.environ.get(...)` 来获取它们。
 
 ### 如何在本地模拟运行 (进阶)
 

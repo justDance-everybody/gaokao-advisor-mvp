@@ -2,3 +2,4 @@ vercel-kv
 openai
 pytest
 pytest-mock
+pytest-dotenv

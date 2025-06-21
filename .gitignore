@@ -1,2 +1,11 @@
 __pycache__/
 .DS_Store
+.vercel
+
+# --- Environment Variables ---
+.env
+
+# --- Python ---
+venv/
+__pycache__/
+*.pyc
