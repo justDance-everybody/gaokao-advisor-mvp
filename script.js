@@ -3,11 +3,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let suggestions = [];
     try {
         const response = await fetch('_data/enrollment_data_2025.json');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        // Flatten the data to get a list of all school and major names
         Object.values(data.data).forEach(province => {
             Object.values(province).forEach(stream => {
                 Object.keys(stream).forEach(school => {
@@ -18,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
         });
-        suggestions = [...new Set(suggestions)]; // Remove duplicates
+        suggestions = [...new Set(suggestions)];
     } catch (error) {
         console.error("Failed to load autocomplete suggestions:", error);
     }
@@ -36,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rankSlider = document.getElementById('rank-slider');
     const rankSliderValue = document.getElementById('rank-slider-value');
     const scoreTypeGroup = document.getElementById('score-type-group');
+    const reportContent = document.getElementById('report-content');
 
     // --- Tab Navigation ---
     tabButtons.forEach(button => {
@@ -51,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     submitButton.addEventListener('click', handleSubmit);
     shareButton.addEventListener('click', handleShare);
 
-    // Score/Rank Input Logic
     if (rankInput && rankSlider && rankSliderValue) {
         rankSlider.addEventListener('input', (e) => {
             const value = e.target.value;
@@ -67,7 +64,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Score/Rank Type Switcher Logic
     if (scoreTypeGroup) {
         scoreTypeGroup.addEventListener('change', (e) => {
             const type = e.target.value;
@@ -109,43 +105,78 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Main Handler Functions ---
     async function handleSubmit() {
-        showLoadingState();
-        try {
-            const userInput = await getUserInput();
-            if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
-                 showErrorState("输入内容不能为空，请填写或上传您的方案。");
-                 submissionView.style.display = 'block';
-                 waitingView.style.display = 'none';
-                 submitButton.disabled = false;
-                 return;
+        const userInput = await getUserInput();
+        if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
+             showErrorState("输入内容不能为空，请填写或上传您的方案。");
+             return;
+        }
+
+        // Switch to report view immediately and clear old content
+        showReportState(""); 
+        
+        const eventSource = new EventSource('/api/handler', {
+            method: 'POST', // EventSource doesn't directly support POST, this is a conceptual representation.
+                           // We will send the data in the request body via a custom fetch wrapper.
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userInput })
+        });
+        
+        let fullReport = "";
+
+        eventSource.onmessage = function(event) {
+            try {
+                const token = JSON.parse(event.data);
+                fullReport += token;
+                reportContent.innerHTML = marked.parse(fullReport);
+            } catch(e) {
+                console.error("Failed to parse token:", event.data);
             }
+        };
+
+        eventSource.onerror = function(err) {
+            console.error("EventSource failed:", err);
+            showErrorState("与服务器的连接中断或发生错误。");
+            eventSource.close();
+        };
+        
+        // This is a workaround because EventSource doesn't natively support POST bodies.
+        // We'll use a fetch request to initiate the stream.
+        try {
             const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
             });
-            if (!response.ok) {
-                let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
-                try {
-                    const errorData = await response.json();
-                    errorText += `\n后端信息: ${errorData.error || JSON.stringify(errorData)}`;
-                } catch (e) {
-                    errorText += `\n响应内容不是有效的JSON。`;
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            function processText({ done, value }) {
+                if (done) {
+                    return;
                 }
-                throw new Error(errorText);
+                const chunk = decoder.decode(value);
+                // SSE messages are separated by \n\n
+                const lines = chunk.split('\n\n');
+                lines.forEach(line => {
+                    if (line.startsWith('data:')) {
+                        const data = line.substring(5).trim();
+                        try {
+                            const token = JSON.parse(data);
+                            fullReport += token;
+                            reportContent.innerHTML = marked.parse(fullReport);
+                        } catch(e) {
+                            console.error("Failed to parse token:", data);
+                        }
+                    }
+                });
+                return reader.read().then(processText);
             }
-            const data = await response.json();
-            const reportHtml = marked.parse(data.report);
-            showReportState(reportHtml);
-        } catch (error) {
+            reader.read().then(processText);
+
+        } catch(error) {
             console.error("Submit/Fetch Error:", error);
-            let detailedErrorMessage = "网络请求失败！\n\n";
-            detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
-            detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
-            detailedErrorMessage += "--- 技术调试信息 ---\n";
-            detailedErrorMessage += `错误类型: ${error.name}\n`;
-            detailedErrorMessage += `错误信息: ${error.message}\n`;
-            showErrorState(detailedErrorMessage);
+            showErrorState(`网络请求失败: ${error.message}`);
         }
     }
 
@@ -177,11 +208,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function showReportState(htmlContent) {
-        document.getElementById('report-content').innerHTML = htmlContent;
+        reportContent.innerHTML = htmlContent;
         waitingView.style.display = 'none';
         submissionView.style.display = 'none';
         errorView.style.display = 'none';
         reportView.style.display = 'block';
+        submitButton.disabled = false; // Re-enable button after completion/error
     }
 
     function showErrorState(message) {

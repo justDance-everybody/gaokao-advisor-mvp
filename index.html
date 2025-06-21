@@ -15,18 +15,18 @@
             <p>免费获取您的专属AI志愿分析报告</p>
             <div class="tab-container">
                 <div class="tab-nav">
-                    <button class="tab-button active" data-tab="paste">直接粘贴笔记</button>
+                    <button class="tab-button" data-tab="paste">直接粘贴笔记</button>
                     <button class="tab-button" data-tab="upload">上传文档</button>
-                    <button class="tab-button" data-tab="fill">快速填写</button>
+                    <button class="tab-button active" data-tab="fill">快速填写</button>
                 </div>
-                <div id="paste" class="tab-content active">
+                <div id="paste" class="tab-content">
                     <textarea id="raw-text-input" placeholder="请将您纠结的几个方案、您的分数位次、以及您的困惑，全部粘贴在这里。格式不限，越详细越好。"></textarea>
                 </div>
                 <div id="upload" class="tab-content">
                     <input type="file" id="file-input" accept=".doc,.docx,.txt,.jpg,.png,.excel">
                     <p id="file-name-display"></p>
                 </div>
-                <div id="fill" class="tab-content">
+                <div id="fill" class="tab-content active">
                     <div class="form-group">
                         <label for="province-select">选择省份:</label>
                         <select id="province-select">

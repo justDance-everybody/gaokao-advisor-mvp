@@ -1,7 +1,7 @@
 import os
 import json
 import traceback
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from openai import OpenAI
 
 # Create a Flask app instance that serves static files from the root
@@ -30,7 +30,7 @@ def prepare_prompt(user_data, enrollment_data):
 
     **你的任务和要求:**
 
-    1.  **解析与总结:** 首先，仔细阅读学生的原始笔记，解析并清晰地总结出他正在纠结的几个核心方案（例如：方案A vs 方案B）。
+    1.  **解析与总结:** 首先，仔细阅读学生的原始笔记，解析并清晰地总结出他正在纠纠的几个核心方案（例如：方案A vs 方案B）。
     2.  **创建方案PK记分卡:** 这是报告的核心！请创建一个Markdown表格，从以下维度对核心方案进行对比打分（满分5星，用 ★★★☆☆ 表示）：
         *   **录取概率:** 结合学生位次和常规认知，分析哪个方案更稳妥。
         *   **学校实力/声誉:** 综合学校的排名、口碑、学科评估等。
@@ -64,68 +64,54 @@ def serve_static(path):
 # --- API Route ---
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    try:
-        # 1. Parse User Data
-        body = request.get_json(silent=True)
-        if not body or 'userInput' not in body:
-            return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
-        user_data = body.get('userInput', {})
+    def stream():
+        try:
+            # 1. Parse User Data
+            body = request.get_json(silent=True)
+            if not body or 'userInput' not in body:
+                yield f"data: **错误**: 请求格式错误或缺少'userInput'字段。\n\n"
+                return
+            user_data = body.get('userInput', {})
 
-        # 2. Prepare Prompt
-        try:
-            enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
-            with open(enrollment_data_path, 'r', encoding='utf-8') as f:
-                enrollment_data = json.load(f)
-            prompt = prepare_prompt(user_data, enrollment_data)
-        except FileNotFoundError:
-            return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
-        
-        # 3. Call AI API
-        try:
+            # 2. Prepare Prompt
+            try:
+                enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
+                with open(enrollment_data_path, 'r', encoding='utf-8') as f:
+                    enrollment_data = json.load(f)
+                prompt = prepare_prompt(user_data, enrollment_data)
+            except FileNotFoundError:
+                yield f"data: **错误**: 服务器内部错误：关键数据文件丢失。\n\n"
+                return
+            
+            # 3. Call AI API with streaming enabled
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
-                raise ValueError("服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。")
+                yield f"data: **错误**: 服务器环境变量 OPENAI_API_KEY 或 OPENAI_API_BASE 未配置。\n\n"
+                return
             
             client = OpenAI(api_key=api_key, base_url=base_url)
             model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
             
-            chat_completion = client.chat.completions.create(
+            stream_response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=model_name,
+                stream=True
             )
 
-            # Add robust checking for the API response
-            if not chat_completion or not chat_completion.choices:
-                error_message = "AI服务返回了意外的响应，没有有效的生成内容。"
-                # Try to get more details from the raw response
-                raw_response = str(chat_completion)
-                print(f"AI service returned an invalid response: {raw_response}")
-                error_message += f"\n\n--- LLM原始响应 ---\n{raw_response}"
-                return jsonify({"error": error_message}), 502
-
-            report_markdown = chat_completion.choices[0].message.content
-            if not report_markdown:
-                error_message = "AI服务成功调用，但返回了空内容。"
-                raw_response = str(chat_completion)
-                print(f"AI service returned an empty message content: {raw_response}")
-                error_message += f"\n\n--- LLM原始响应 ---\n{raw_response}"
-                return jsonify({"error": error_message}), 500
-
-            return jsonify({"report": report_markdown}), 200
+            for chunk in stream_response:
+                content = chunk.choices[0].delta.content
+                if content:
+                    # SSE format: data: <content>\n\n
+                    yield f"data: {json.dumps(content)}\n\n"
 
         except Exception as e:
             error_trace = traceback.format_exc()
-            print(f"AI API Error: {error_trace}")
-            return jsonify({"error": f"AI服务调用失败: {e}", "traceback": error_trace}), 503
+            print(f"UNHANDLED EXCEPTION: {error_trace}")
+            error_message = f"**服务器发生未知致命错误**: {e}\n\n```\n{error_trace}\n```"
+            yield f"data: {json.dumps(error_message)}\n\n"
 
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        print(f"UNHANDLED EXCEPTION: {error_trace}")
-        return jsonify({
-            "error": f"服务器发生未知致命错误: {e}",
-            "traceback": error_trace
-        }), 500
+    return Response(stream(), mimetype='text/event-stream')
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
