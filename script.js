@@ -32,6 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dilemmaTags = document.querySelector('.dilemma-tags');
     const savePdfBtn = document.getElementById('save-pdf-btn');
 
+    // --- Initial State ---
+    fetchInitialUsage();
+
     // --- Event Listeners ---
     submitButton.addEventListener('click', handleSubmit);
 
@@ -115,7 +118,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         submitButton.disabled = true;
         savePdfBtn.style.display = 'none';
-        answerContent.innerHTML = '<div class="typing-cursor"></div>'; // Show loading indicator
+        answerContent.innerHTML = '<div class="typing-cursor"></div>';
 
         try {
             const response = await fetch('/api/handler', {
@@ -124,34 +127,71 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ userInput })
             });
 
-            const data = await response.json();
-
-            if (data.usage) {
-                updateUsage(data.usage);
+            if (response.headers.get("Content-Type")?.includes("application/json")) {
+                const errorData = await response.json();
+                if (errorData.usage) updateUsage(errorData.usage);
+                answerContent.innerHTML = `<pre style="color:red;">${errorData.error}</pre>`;
+                submitButton.disabled = false;
+                return;
             }
 
-            if (!response.ok) {
-                let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
-                let backendMessage = data.error || JSON.stringify(data);
-                if (data.traceback) {
-                    backendMessage += `\n\n--- 后端堆栈跟踪 ---\n${data.traceback}`;
+            if (!response.ok || !response.body) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullReport = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                
+                let boundary = buffer.indexOf('\n\n');
+                while (boundary !== -1) {
+                    const message = buffer.substring(0, boundary);
+                    buffer = buffer.substring(boundary + 2);
+
+                    if (message.startsWith('event: message')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
+                        try {
+                            const token = JSON.parse(data);
+                            fullReport += token;
+                            renderLive(fullReport, thinkContainer, thinkContent, answerContent);
+                        } catch (e) { console.error("Failed to parse token:", data); }
+                    } else if (message.startsWith('event: usage')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
+                        try {
+                            const usageData = JSON.parse(data);
+                            updateUsage(usageData);
+                        } catch (e) { console.error("Failed to parse usage data:", data); }
+                    } else if (message.startsWith('event: end')) {
+                        processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent);
+                        savePdfBtn.style.display = 'inline-block';
+                        submitButton.disabled = false;
+                        return; 
+                    } else if (message.startsWith('event: error')) {
+                        const data = message.substring(message.indexOf('data: ') + 6);
+                        try {
+                            const errorData = JSON.parse(data);
+                            answerContent.innerHTML = `<pre style="color:red;">${JSON.stringify(errorData, null, 2)}</pre>`;
+                        } catch(e) {
+                            answerContent.innerHTML = `<pre style="color:red;">${data}</pre>`;
+                        }
+                        submitButton.disabled = false;
+                        return; 
+                    }
+                    boundary = buffer.indexOf('\n\n');
                 }
-                errorText += `\n后端信息: ${backendMessage}`;
-                throw new Error(errorText);
             }
-            
-            processAndRenderFinalReport(data.report, thinkContainer, thinkContent, answerContent);
-            savePdfBtn.style.display = 'inline-block';
+            processAndRenderFinalReport(fullReport, thinkContainer, thinkContent, answerContent);
 
-        } catch (error) {
+        } catch(error) {
             console.error("Submit/Fetch Error:", error);
-            let detailedErrorMessage = "网络请求失败！\n\n";
-            detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
-            detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
-            detailedErrorMessage += "--- 技术调试信息 ---\n";
-            detailedErrorMessage += `错误类型: ${error.name}\n`;
-            detailedErrorMessage += `错误信息: ${error.message}\n`;
-            answerContent.innerHTML = `<pre style="color:red;">${detailedErrorMessage}</pre>`;
+            botMessageDiv.answerContent.innerHTML = `<pre style="color:red;">网络请求失败: ${error.message}</pre>`;
         } finally {
             submitButton.disabled = false;
         }
@@ -186,6 +226,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         return { thinkContainer, thinkContent, answerContent, toggleThink };
     }
 
+    function renderLive(text, thinkContainer, thinkContent, answerContent) {
+        const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
+        let currentAnswer = text;
+        if (thinkMatch) {
+            const thinkText = thinkMatch[1];
+            currentAnswer = text.replace(thinkMatch[0], '');
+            if (thinkText.trim()) {
+                thinkContainer.style.display = 'block';
+                thinkContent.innerHTML = `<pre><code>${thinkText}</code></pre>`;
+            }
+        }
+        answerContent.innerHTML = `${marked.parse(currentAnswer)}<span class="typing-cursor"></span>`;
+        reportContainer.scrollTop = reportContainer.scrollHeight;
+    }
+
     function processAndRenderFinalReport(text, thinkContainer, thinkContent, answerContent) {
         const thinkMatch = text.match(/<think>([\s\S]*)<\/think>/);
         let finalAnswer = text;
@@ -207,6 +262,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function fetchInitialUsage() {
+        try {
+            const response = await fetch('/api/usage');
+            if (response.ok) {
+                const data = await response.json();
+                updateUsage(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch initial usage:", error);
+            usageStats.textContent = "用量: N/A";
+        }
+    }
+
     async function handleSavePdf() {
         const reportToSave = reportContainer.querySelector('.bot-message:last-child');
         if (!reportToSave) {
@@ -219,11 +287,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const { jsPDF } = window.jspdf;
-            const canvas = await html2canvas(reportToSave, {
+            const userInput = await getUserInput();
+            
+            // Create a temporary container for PDF content
+            const pdfContent = document.createElement('div');
+            pdfContent.style.padding = '20px';
+            pdfContent.style.width = '800px'; // A fixed width for consistent PDF layout
+            
+            const userInputHeader = document.createElement('h3');
+            userInputHeader.textContent = '我的输入';
+            pdfContent.appendChild(userInputHeader);
+            
+            const userInputContent = document.createElement('pre');
+            userInputContent.textContent = userInput.rawText;
+            pdfContent.appendChild(userInputContent);
+
+            const reportHeader = document.createElement('h3');
+            reportHeader.textContent = 'AI分析报告';
+            reportHeader.style.marginTop = '20px';
+            pdfContent.appendChild(reportHeader);
+
+            const answerClone = reportToSave.querySelector('.answer-content').cloneNode(true);
+            pdfContent.appendChild(answerClone);
+
+            // Append to body to render for html2canvas, but keep it off-screen
+            pdfContent.style.position = 'absolute';
+            pdfContent.style.left = '-9999px';
+            document.body.appendChild(pdfContent);
+
+            const canvas = await html2canvas(pdfContent, {
                 scale: 2,
                 useCORS: true,
                 backgroundColor: '#ffffff'
             });
+            
+            document.body.removeChild(pdfContent); // Clean up
+
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF({
                 orientation: 'p',
