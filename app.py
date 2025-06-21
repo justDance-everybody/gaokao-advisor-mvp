@@ -64,26 +64,29 @@ def serve_static(path):
 # --- API Route ---
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    def stream_response():
-        try:
-            # 1. Parse User Data
-            body = request.get_json(silent=True)
-            if not body or 'userInput' not in body:
-                yield f"event: error\ndata: {json.dumps({'error': '请求格式错误或缺少userInput字段。'})}\n\n"
-                return
-            user_data = body.get('userInput', {})
+    # All request-related operations must happen here, outside the generator.
+    try:
+        body = request.get_json(silent=True)
+        if not body or 'userInput' not in body:
+            return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
+        user_data = body.get('userInput', {})
 
-            # 2. Prepare Prompt
-            try:
-                enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
-                with open(enrollment_data_path, 'r', encoding='utf-8') as f:
-                    enrollment_data = json.load(f)
-                prompt = prepare_prompt(user_data, enrollment_data)
-            except FileNotFoundError:
-                yield f"event: error\ndata: {json.dumps({'error': '服务器内部错误：关键数据文件丢失。'})}\n\n"
-                return
-            
-            # 3. Call AI API with streaming enabled
+        enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
+        with open(enrollment_data_path, 'r', encoding='utf-8') as f:
+            enrollment_data = json.load(f)
+        
+        prompt = prepare_prompt(user_data, enrollment_data)
+
+    except FileNotFoundError:
+        return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"UNHANDLED EXCEPTION IN HANDLER: {error_trace}")
+        return jsonify({"error": f"服务器在准备请求时发生错误: {e}"}), 500
+
+    def stream_response(p):
+        try:
+            # This generator function now only handles the AI call and streaming.
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
@@ -94,7 +97,7 @@ def handler():
             model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
             
             stream = client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": p}],
                 model=model_name,
                 stream=True
             )
@@ -102,21 +105,20 @@ def handler():
             for chunk in stream:
                 content = chunk.choices[0].delta.content
                 if content:
-                    # SSE format: event: message, data: <content>\n\n
                     yield f"event: message\ndata: {json.dumps(content)}\n\n"
             
             yield f"event: end\ndata: End of stream\n\n"
 
         except Exception as e:
             error_trace = traceback.format_exc()
-            print(f"UNHANDLED EXCEPTION: {error_trace}")
+            print(f"UNHANDLED EXCEPTION IN STREAM: {error_trace}")
             error_message = {
-                "error": f"服务器发生未知致命错误: {e}",
+                "error": f"服务器在与AI通信时发生错误: {e}",
                 "traceback": error_trace
             }
             yield f"event: error\ndata: {json.dumps(error_message)}\n\n"
 
-    return Response(stream_response(), mimetype='text/event-stream')
+    return Response(stream_response(prompt), mimetype='text/event-stream')
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
