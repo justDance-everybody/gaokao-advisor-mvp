@@ -30,34 +30,49 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoadingState();
 
         try {
-            const userInput = await getUserInput(); // Can throw error
+            const userInput = await getUserInput();
 
             if (!userInput || (userInput.rawText && !userInput.rawText.trim())) {
                  showErrorState("输入内容不能为空，请填写或上传您的方案。");
+                 // Restore the initial view to allow user to try again
+                 submissionView.style.display = 'block';
+                 waitingView.style.display = 'none';
+                 submitButton.disabled = false;
                  return;
             }
 
-            const response = await fetch('/api/handler', { // Can throw error
+            const response = await fetch('/api/handler', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userInput })
             });
 
-            const data = await response.json();
-
             if (!response.ok) {
-                showErrorState(data.error || "服务返回了未知错误。");
-            } else {
-                const reportHtml = marked.parse(data.report);
-                showReportState(reportHtml);
+                let errorText = `服务返回错误。状态码: ${response.status} (${response.statusText})`;
+                try {
+                    const errorData = await response.json();
+                    errorText += `\n后端信息: ${errorData.error || JSON.stringify(errorData)}`;
+                } catch (e) {
+                    errorText += `\n响应内容不是有效的JSON。`;
+                }
+                throw new Error(errorText);
             }
+
+            const data = await response.json();
+            const reportHtml = marked.parse(data.report);
+            showReportState(reportHtml);
+
         } catch (error) {
             console.error("Submit/Fetch Error:", error);
-            let errorMessage = "网络请求失败，请检查您的网络连接或稍后重试。";
-            if (error.message.includes("读取文件时出错")) {
-                errorMessage = "读取文件时出错，请检查文件是否损坏或格式是否正确。";
-            }
-            showErrorState(errorMessage);
+            
+            let detailedErrorMessage = "网络请求失败！\n\n";
+            detailedErrorMessage += "这通常意味着前端页面无法与后端API服务正常通信。\n";
+            detailedErrorMessage += "请检查浏览器开发者工具(F12)中的“网络(Network)”和“控制台(Console)”选项卡，查看是否有更详细的红色错误信息。\n\n";
+            detailedErrorMessage += "--- 技术调试信息 ---\n";
+            detailedErrorMessage += `错误类型: ${error.name}\n`;
+            detailedErrorMessage += `错误信息: ${error.message}\n`;
+            
+            showErrorState(detailedErrorMessage);
         }
     }
 
@@ -98,15 +113,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showErrorState(message) {
-        document.getElementById('error-message').textContent = message;
+        // Use <pre> tag to preserve formatting of the detailed error message
+        document.getElementById('error-message').innerHTML = `<pre>${message}</pre>`;
         waitingView.style.display = 'none';
-        // Keep submission view hidden if error occurs, show the error view instead.
         submissionView.style.display = 'none';
         reportView.style.display = 'none';
         errorView.style.display = 'block';
-        // Allow user to try again, but they'll need to refresh or we need a "try again" button
-        // For now, let's re-enable the main view to allow re-submission.
-        // A better UX would be a dedicated "back" or "retry" button in the error view.
         submitButton.disabled = false; 
     }
 
@@ -122,9 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const fileInput = document.getElementById('file-input');
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
-                // Use a promise to handle the async nature of FileReader
                 rawText = await new Promise((resolve, reject) => {
-                    // Basic type check
                     if (file.type.startsWith('image/')) {
                         resolve(`用户上传了图片: ${file.name}。请注意，AI无法直接分析图片内容，请将图片中的文字手动粘贴。`);
                         return;
@@ -133,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
                          resolve(`用户上传了Word文档: ${file.name}。请注意，AI将尝试读取文本，但复杂格式可能无法解析。`);
                          return;
                     }
-
                     const reader = new FileReader();
                     reader.onload = (e) => resolve(e.target.result);
                     reader.onerror = (e) => reject(new Error("读取文件时出错"));
@@ -149,11 +158,9 @@ document.addEventListener('DOMContentLoaded', () => {
             rawText = `省份: ${province}\n科类: ${stream}\n分数/位次: ${rank}\n方案: ${options}\n困惑: ${dilemma}`;
         }
 
-        // Consolidate data from the 'fill' tab into the final object
         const finalProvince = province || document.getElementById('province-input').value;
         const finalStream = stream || document.getElementById('stream-input').value;
         const finalRank = rank || document.getElementById('rank-input').value;
-
 
         return {
             province: finalProvince,
