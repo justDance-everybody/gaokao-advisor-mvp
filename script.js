@@ -312,6 +312,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const answerClone = reportToSave.querySelector('.answer-content').cloneNode(true);
             pdfContent.appendChild(answerClone);
 
+            // To prevent screen flicker, render the element off-screen
+            pdfContent.style.position = 'absolute';
+            pdfContent.style.left = '-9999px';
+            pdfContent.style.top = '0px';
             document.body.appendChild(pdfContent);
 
             const canvas = await html2canvas(pdfContent, {
@@ -320,7 +324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 backgroundColor: '#ffffff'
             });
             
-            document.body.removeChild(pdfContent);
+            document.body.removeChild(pdfContent); // Clean up the DOM
 
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF({
