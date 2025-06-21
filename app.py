@@ -94,7 +94,16 @@ def handler():
             messages=[{"role": "user", "content": prompt}],
             model=model_name,
         )
+
+        # Add robust checking for the API response
+        if not chat_completion or not chat_completion.choices:
+            print(f"AI service returned an invalid response: {chat_completion}")
+            return jsonify({"error": "AI服务返回了意外的响应，没有有效的生成内容。"}), 502
+
         report_markdown = chat_completion.choices[0].message.content
+        if not report_markdown:
+            print(f"AI service returned an empty message content: {chat_completion}")
+            return jsonify({"error": "AI服务成功调用，但返回了空内容。"}), 500
 
         return jsonify({"report": report_markdown}), 200
 
