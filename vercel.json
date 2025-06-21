@@ -1,10 +1,5 @@
 {
-  "functions": {
-    "api/handler.py": {
-      "includeFiles": "_data/enrollment_data_2025.json"
-    }
-  },
-  "cron": [
+  "crons": [
     {
       "path": "/api/cron/reset",
       "schedule": "0 0 * * *"
