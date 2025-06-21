@@ -23,6 +23,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Element Cache ---
     const submitButton = document.getElementById('submit-button');
     const reportContainer = document.getElementById('report-container');
+    const submissionArea = document.querySelector('.submission-area');
+    const reportMainArea = document.querySelector('.report-main-area');
+    const submissionHeader = document.getElementById('submission-header');
+    const reportHeader = document.getElementById('report-header');
     const rankInput = document.getElementById('rank-input');
     const rankSlider = document.getElementById('rank-slider');
     const rankSliderValue = document.getElementById('rank-slider-value');
@@ -34,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Initial State ---
     fetchInitialUsage();
+    setupCollapsibleSections();
 
     // --- Event Listeners ---
     submitButton.addEventListener('click', handleSubmit);
@@ -103,6 +108,54 @@ document.addEventListener('DOMContentLoaded', async () => {
                 suggest(matches);
             }
         });
+    }
+
+    // --- Collapsible Sections Logic ---
+    function setupCollapsibleSections() {
+        const isMobile = () => window.innerWidth <= 1024;
+        let firstSubmit = true;
+
+        if (!isMobile()) return;
+
+        // Initial state: collapse report area
+        reportMainArea.classList.add('collapsed');
+        submissionArea.classList.remove('collapsed');
+        updateCollapseIcons();
+
+        submissionHeader.addEventListener('click', () => {
+            submissionArea.classList.toggle('collapsed');
+            updateCollapseIcons();
+        });
+
+        reportHeader.addEventListener('click', () => {
+            reportMainArea.classList.toggle('collapsed');
+            updateCollapseIcons();
+        });
+        
+        function updateCollapseIcons() {
+            const subIcon = submissionHeader.querySelector('.collapse-icon');
+            const repIcon = reportHeader.querySelector('.collapse-icon');
+            
+            subIcon.className = submissionArea.classList.contains('collapsed')
+                ? 'fas fa-chevron-down collapse-icon'
+                : 'fas fa-chevron-up collapse-icon';
+            
+            repIcon.className = reportMainArea.classList.contains('collapsed')
+                ? 'fas fa-chevron-down collapse-icon'
+                : 'fas fa-chevron-up collapse-icon';
+        }
+
+        // Hook into the submit handler
+        const originalHandleSubmit = handleSubmit;
+        window.handleSubmit = async function() {
+            if (isMobile() && firstSubmit) {
+                submissionArea.classList.add('collapsed');
+                reportMainArea.classList.remove('collapsed');
+                updateCollapseIcons();
+                firstSubmit = false;
+            }
+            await originalHandleSubmit.apply(this, arguments);
+        }
     }
 
     // --- Main Handler Functions ---
@@ -370,5 +423,11 @@ ${dilemma}
             rank: rank ? parseInt(rank, 10) : null,
             rawText: rawText,
         };
+    }
+
+    // Expose handleSubmit to the global scope if it's wrapped
+    if (window.handleSubmit) {
+        const originalOnload = document.querySelector('#submit-button').onclick;
+        document.querySelector('#submit-button').onclick = window.handleSubmit;
     }
 });

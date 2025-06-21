@@ -15,10 +15,11 @@
     <div class="container">
         <!-- 左侧/顶部 信息提交区域 -->
         <div class="submission-area">
-            <header>
+            <header id="submission-header" class="collapsible-header">
                 <h2><i class="fas fa-user-edit"></i> 填写您的信息</h2>
+                <i class="fas fa-chevron-up collapse-icon"></i>
             </header>
-            <div class="form-container">
+            <div class="form-container" id="submission-content">
                 <div class="form-group">
                     <label for="province-select">选择省份:</label>
                     <select id="province-select">
@@ -83,9 +84,10 @@
 
         <!-- 右侧/下部 报告展示区域 -->
         <div class="report-main-area">
-            <header>
+            <header id="report-header" class="collapsible-header">
                 <h2><i class="fas fa-brain"></i> AI决策顾问分析报告</h2>
                 <button id="save-pdf-btn" style="display: none;"><i class="fas fa-file-pdf"></i> 保存为PDF</button>
+                <i class="fas fa-chevron-down collapse-icon"></i>
             </header>
             <div id="report-container">
                 <!-- Bot messages will be appended here -->
