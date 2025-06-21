@@ -222,16 +222,15 @@ textarea { min-height: 80px; resize: vertical; }
     .collapsible-header.collapsed .collapse-icon {
         transform: translateY(-50%) rotate(180deg);
     }
-    .submission-area .form-container, .report-main-area #report-container {
+    .submission-area .form-container {
         transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out, opacity 0.3s ease-in-out;
-        overflow: hidden;
     }
-    .submission-area.collapsed .form-container,
-    .report-main-area.collapsed #report-container {
+    .submission-area.collapsed .form-container {
         max-height: 0 !important; /* Use important to override other styles */
         padding-top: 0;
         padding-bottom: 0;
         opacity: 0;
+        overflow-y: hidden;
     }
     .collapsible-header .collapse-icon {
         display: block; /* Visible on mobile */

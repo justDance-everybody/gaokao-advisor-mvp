@@ -26,7 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const submissionArea = document.querySelector('.submission-area');
     const reportMainArea = document.querySelector('.report-main-area');
     const submissionHeader = document.getElementById('submission-header');
-    const reportHeader = document.getElementById('report-header');
     const rankInput = document.getElementById('rank-input');
     const rankSlider = document.getElementById('rank-slider');
     const rankSliderValue = document.getElementById('rank-slider-value');
@@ -117,8 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (!isMobile()) return;
 
-        // Initial state: collapse report area
-        reportMainArea.classList.add('collapsed');
+        // Initial state: show submission area
         submissionArea.classList.remove('collapsed');
         updateCollapseIcons();
 
@@ -126,21 +124,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             submissionArea.classList.toggle('collapsed');
             updateCollapseIcons();
         });
-
-        reportHeader.addEventListener('click', () => {
-            reportMainArea.classList.toggle('collapsed');
-            updateCollapseIcons();
-        });
         
         function updateCollapseIcons() {
             const subIcon = submissionHeader.querySelector('.collapse-icon');
-            const repIcon = reportHeader.querySelector('.collapse-icon');
             
             subIcon.className = submissionArea.classList.contains('collapsed')
-                ? 'fas fa-chevron-down collapse-icon'
-                : 'fas fa-chevron-up collapse-icon';
-            
-            repIcon.className = reportMainArea.classList.contains('collapsed')
                 ? 'fas fa-chevron-down collapse-icon'
                 : 'fas fa-chevron-up collapse-icon';
         }
@@ -150,7 +138,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.handleSubmit = async function() {
             if (isMobile() && firstSubmit) {
                 submissionArea.classList.add('collapsed');
-                reportMainArea.classList.remove('collapsed');
                 updateCollapseIcons();
                 firstSubmit = false;
             }
