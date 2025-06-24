@@ -41,6 +41,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Event Listeners ---
     submitButton.addEventListener('click', () => window.handleSubmit());
+    
+    const mainStreamGroup = document.getElementById('main-stream-group');
+    const newGaokaoOptions = document.getElementById('new-gaokao-options');
+    
+    mainStreamGroup.addEventListener('change', (e) => {
+        if (e.target.value === '新高考') {
+            newGaokaoOptions.style.display = 'block';
+        } else {
+            newGaokaoOptions.style.display = 'none';
+        }
+    });
+
+    const secondChoiceGroup = document.getElementById('second-choice-group');
+    secondChoiceGroup.addEventListener('change', (e) => {
+        const checkedBoxes = secondChoiceGroup.querySelectorAll('input[type="checkbox"]:checked');
+        if (checkedBoxes.length > 2) {
+            alert('再选科目最多只能选择两项。');
+            e.target.checked = false;
+        }
+    });
 
     if (rankInput && rankSlider && rankSliderValue) {
         rankSlider.addEventListener('input', (e) => {
@@ -267,22 +287,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderLive(text, thinkContainer, thinkContent, answerContent) {
-        const thinkBlockRegex = /<think>([\s\S]*)<\/think>/;
-        const thinkMatch = text.match(thinkBlockRegex);
+        const thinkStartTag = '<think>';
+        const thinkEndTag = '</think>';
         
         let currentAnswer = text;
         let currentThink = "";
+        let isThinking = text.includes(thinkStartTag) && !text.includes(thinkEndTag);
+        let thinkingFinished = text.includes(thinkEndTag);
 
-        if (thinkMatch) {
-            // A complete <think>...</think> block exists.
-            currentThink = thinkMatch[1];
-            // The answer is whatever is AFTER the think block.
-            currentAnswer = text.substring(text.indexOf('</think>') + 8);
-        } else if (text.includes('<think>')) {
-            // The <think> tag has appeared, but not the closing tag.
-            // All content so far is part of the thinking process.
-            currentThink = text.substring(text.indexOf('<think>') + 7);
+        if (thinkingFinished) {
+            const thinkContentMatch = text.match(/<think>([\s\S]*)<\/think>/);
+            currentThink = thinkContentMatch ? thinkContentMatch[1] : "";
+            currentAnswer = text.substring(text.indexOf(thinkEndTag) + thinkEndTag.length);
+            if (thinkContent.classList.contains('expanded')) {
+                thinkContent.classList.remove('expanded');
+                thinkContainer.querySelector('.toggle-think').classList.remove('expanded');
+            }
+        } else if (isThinking) {
+            currentThink = text.substring(text.indexOf(thinkStartTag) + thinkStartTag.length);
             currentAnswer = ""; // No answer to display yet.
+            if (!thinkContent.classList.contains('expanded')) {
+                thinkContent.classList.add('expanded');
+                thinkContainer.querySelector('.toggle-think').classList.add('expanded');
+            }
         }
 
         // Render the thinking part
@@ -336,6 +363,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response.ok) {
                 const data = await response.json();
                 updateUsage(data);
+                if (data.used >= data.limit) {
+                    alert("非常抱歉，今日的免费体验名额已被抢完！请您明日再来。");
+                    if(submitButton) submitButton.disabled = true;
+                }
             }
         } catch (error) {
             console.error("Failed to fetch initial usage:", error);
@@ -414,27 +445,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Data Gathering ---
     async function getUserInput() {
         const province = document.getElementById('province-select').value;
-        const selectedStream = document.querySelector('input[name="stream"]:checked');
-        const stream = selectedStream ? selectedStream.value : '';
+        const selectedStream = document.querySelector('input[name="stream"]:checked').value;
         const rank = document.getElementById('rank-input').value;
         const options = document.getElementById('options-input').value;
         const dilemma = document.getElementById('dilemma-input').value;
         const scoreType = document.querySelector('input[name="score_type"]:checked').value;
         const scoreLabel = scoreType === 'score' ? '分数' : '位次';
+
+        let streamText = selectedStream;
+        if (selectedStream === '新高考') {
+            const firstChoice = document.querySelector('input[name="first-choice"]:checked')?.value;
+            const secondChoices = Array.from(document.querySelectorAll('input[name="second-choice"]:checked')).map(cb => cb.value);
+            
+            if (!firstChoice || secondChoices.length !== 2) {
+                alert('请完成新高考的选科（1门首选+2门再选）。');
+                return null; // Stop submission if selection is incomplete
+            }
+            streamText = `新高考 (3+1+2): ${firstChoice} + ${secondChoices.join(' + ')}`;
+        } else if (selectedStream === '物理类' || selectedStream === '历史类') {
+            // No change needed, just use the value
+        }
         
         const rawText = `
 省份: ${province}
-科类: ${stream}
+科类: ${streamText}
 ${scoreLabel}: ${rank}
-纠结的方案: 
+纠结的方案:
 ${options}
-我的主要困惑: 
+我的主要困惑:
 ${dilemma}
         `.trim();
 
         return {
             province: province,
-            stream: stream,
+            stream: streamText,
             rank: rank ? parseInt(rank, 10) : null,
             rawText: rawText,
         };

@@ -39,14 +39,38 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>选择科类:</label>
-                    <div class="radio-group">
+                    <label>选择科类模式:</label>
+                    <div class="radio-group" id="main-stream-group">
                         <input type="radio" id="stream-physics" name="stream" value="物理类" checked>
                         <label for="stream-physics">物理类</label>
                         <input type="radio" id="stream-history" name="stream" value="历史类">
                         <label for="stream-history">历史类</label>
-                        <input type="radio" id="stream-reform" name="stream" value="不分科">
-                        <label for="stream-reform">不分科</label>
+                        <input type="radio" id="stream-new" name="stream" value="新高考">
+                        <label for="stream-new">新高考(3+1+2)</label>
+                    </div>
+                </div>
+                <div class="form-group" id="new-gaokao-options" style="display: none;">
+                    <div class="form-group sub-group">
+                        <label>首选科目 (1选1):</label>
+                        <div class="radio-group">
+                            <input type="radio" id="first-choice-physics" name="first-choice" value="物理">
+                            <label for="first-choice-physics">物理</label>
+                            <input type="radio" id="first-choice-history" name="first-choice" value="历史">
+                            <label for="first-choice-history">历史</label>
+                        </div>
+                    </div>
+                    <div class="form-group sub-group">
+                        <label>再选科目 (4选2):</label>
+                        <div class="radio-group" id="second-choice-group">
+                            <input type="checkbox" id="second-choice-bio" name="second-choice" value="生物">
+                            <label for="second-choice-bio">生物</label>
+                            <input type="checkbox" id="second-choice-chem" name="second-choice" value="化学">
+                            <label for="second-choice-chem">化学</label>
+                            <input type="checkbox" id="second-choice-geo" name="second-choice" value="地理">
+                            <label for="second-choice-geo">地理</label>
+                            <input type="checkbox" id="second-choice-poli" name="second-choice" value="政治">
+                            <label for="second-choice-poli">政治</label>
+                        </div>
                     </div>
                 </div>
                 <div class="form-group">

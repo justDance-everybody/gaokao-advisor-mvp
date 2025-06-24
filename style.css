@@ -183,8 +183,19 @@ textarea { min-height: 80px; resize: vertical; }
 .toggle-think .fas { margin-left: 6px; transition: transform 0.3s ease-out; }
 .toggle-think.expanded .fa-chevron-down { transform: rotate(180deg); }
 
-.think-content { max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.4s ease-in-out, opacity 0.4s ease-in-out; }
-.think-content.expanded { max-height: 300px; opacity: 1; overflow-y: auto; }
+.think-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease-in-out, opacity 0.3s ease-in-out, padding 0.5s ease-in-out;
+    padding: 0 1em; /* Add padding for when it's expanded */
+}
+.think-content.expanded {
+    max-height: 500px; /* Increased max-height for potentially long content */
+    opacity: 1;
+    overflow-y: auto;
+    padding: 1em;
+}
 .think-content pre { margin-top: 0.5em; background-color: #F8F9FA; box-shadow: inset 0 1px 4px rgba(0,0,0,0.04); }
 
 .typing-cursor { display: inline-block; width: 10px; height: 1.2rem; background-color: #333; animation: blink 1s infinite; margin-left: 2px; }
