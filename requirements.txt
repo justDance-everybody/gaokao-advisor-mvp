@@ -3,6 +3,5 @@ openai
 pytest
 pytest-mock
 gunicorn
-redis
 gevent
 python-dotenv
