@@ -1,190 +1,66 @@
 import os
 import json
 import traceback
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, Response
 from openai import OpenAI
+import redis
 from dotenv import load_dotenv
-import threading
 
 load_dotenv() # Load environment variables from .env file
 
 # --- Configuration ---
-# --- App Configuration ---
 DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", 100))
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", 10))
-CONTEXT_TURNS = int(os.environ.get("CONTEXT_TURNS", 3))
-LOAD_SCORE_DATA = os.environ.get("LOAD_SCORE_DATA", "true").lower() == "true"
+def get_daily_key():
+    """Generates a Redis key for the current day based on UTC."""
+    return f"daily_requests_count:{datetime.utcnow().strftime('%Y-%m-%d')}"
 
-# --- File Paths ---
-DATA_DIR = '_data'
-SESSIONS_DIR = 'sessions'
-SCORE_LINES_DIR = os.path.join(DATA_DIR, 'scorelines')
-USAGE_FILE = os.path.join(DATA_DIR, 'usage.json')
-USERS_FILE = os.path.join(DATA_DIR, 'users.json')
-
-# --- In-memory State ---
-usage_data = {}
-rate_limit_data = {} # { "ip": {"timestamp": time, "count": n} }
-valid_invitation_codes = []
-app_lock = threading.Lock()
-
-
-# --- Time & Date Helpers ---
-def get_beijing_today_str():
-    """Gets the current date string in Beijing Time (UTC+8)."""
-    beijing_tz = timezone(timedelta(hours=8))
-    return datetime.now(beijing_tz).strftime('%Y-%m-%d')
-
-# --- Initialization Functions ---
-def load_or_initialize_data():
-    """Loads all necessary data from files into memory."""
-    global usage_data, valid_invitation_codes
-    with app_lock:
-        # Load Usage Data
-        today_str = get_beijing_today_str()
-        try:
-            if os.path.exists(USAGE_FILE):
-                with open(USAGE_FILE, 'r') as f:
-                    data = json.load(f)
-                if today_str not in data:
-                    usage_data = {today_str: 0}
-                else:
-                    usage_data = data
-            else:
-                usage_data = {today_str: 0}
-                _write_usage_file()
-        except (json.JSONDecodeError, FileNotFoundError):
-            usage_data = {today_str: 0}
-            _write_usage_file()
-        print(f"Usage initialized for {today_str}: {usage_data.get(today_str, 0)} requests.")
-
-        # Load Users/Invitation Codes
-        try:
-            if os.path.exists(USERS_FILE):
-                with open(USERS_FILE, 'r') as f:
-                    users = json.load(f)
-                    valid_invitation_codes = users.get("valid_codes", [])
-            else:
-                # Create a default users file if it doesn't exist
-                valid_invitation_codes = ["DEFAULT_CODE"]
-                with open(USERS_FILE, 'w') as f:
-                    json.dump({"valid_codes": valid_invitation_codes}, f, indent=2)
-        except (json.JSONDecodeError, FileNotFoundError):
-            valid_invitation_codes = []
-        print(f"Loaded {len(valid_invitation_codes)} invitation codes.")
-
-        # Create sessions directory if it doesn't exist
-        os.makedirs(SESSIONS_DIR, exist_ok=True)
-        os.makedirs(SCORE_LINES_DIR, exist_ok=True)
-
-# --- Usage & Rate Limit Helpers ---
-def get_current_usage():
-    """Gets the current usage count for today."""
-    today_str = get_beijing_today_str()
-    if today_str not in usage_data:
-        load_or_initialize_data()
-    return usage_data.get(today_str, 0)
-
-def increment_usage():
-    """Increments usage count and writes to file."""
-    global usage_data
-    with app_lock:
-        today_str = get_beijing_today_str()
-        if today_str not in usage_data:
-            usage_data = {today_str: 1}
-        else:
-            usage_data[today_str] = usage_data.get(today_str, 0) + 1
-        _write_usage_file()
-        return usage_data[today_str]
-
-def _write_usage_file():
-    """Writes the current usage_data to the file (internal, needs lock)."""
-    os.makedirs(os.path.dirname(USAGE_FILE), exist_ok=True)
-    with open(USAGE_FILE, 'w') as f:
-        json.dump(usage_data, f, indent=2)
-
-def check_rate_limit(ip):
-    """Checks if an IP has exceeded the rate limit. Returns True if limited."""
-    global rate_limit_data
-    with app_lock:
-        current_time = datetime.now().timestamp()
-        
-        # Clean up old entries
-        for old_ip in list(rate_limit_data.keys()):
-            if current_time - rate_limit_data[old_ip]['timestamp'] > 60:
-                del rate_limit_data[old_ip]
-
-        if ip not in rate_limit_data:
-            rate_limit_data[ip] = {"timestamp": current_time, "count": 1}
-            return False
-        
-        if current_time - rate_limit_data[ip]['timestamp'] > 60:
-            rate_limit_data[ip] = {"timestamp": current_time, "count": 1}
-            return False
-        
-        rate_limit_data[ip]['count'] += 1
-        return rate_limit_data[ip]['count'] > RATE_LIMIT_PER_MINUTE
-
-# --- Session History Helpers ---
-def load_session_history(session_id):
-    """Loads chat history for a given session ID."""
-    session_file = os.path.join(SESSIONS_DIR, f"{session_id}.json")
-    if os.path.exists(session_file):
-        try:
-            with open(session_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return []
-    return []
-
-def save_session_history(session_id, history):
-    """Saves chat history for a given session ID."""
-    session_file = os.path.join(SESSIONS_DIR, f"{session_id}.json")
-    with open(session_file, 'w', encoding='utf-8') as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-
-def load_score_data(province, stream):
-    """Loads score line data for a given province and stream."""
-    if not LOAD_SCORE_DATA:
-        return None
-    
-    # For new gaokao, map to traditional streams
-    if "物理" in stream:
-        stream_key = "理科"
-    elif "历史" in stream:
-        stream_key = "文科"
-    else: # For provinces that don't distinguish
-        stream_key = stream
-
-    score_data = {}
-    try:
-        for filename in os.listdir(SCORE_LINES_DIR):
-            if filename.endswith('.json'):
-                filepath = os.path.join(SCORE_LINES_DIR, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if data.get('province') == province:
-                        year = data.get('year', '未知年份')
-                        if stream_key in data.get('batches', {}):
-                            score_data[year] = data['batches'][stream_key]
-    except Exception as e:
-        print(f"Error loading score data: {e}")
-    
-    return score_data if score_data else None
-
+# --- Redis Connection ---
+kv = None
+try:
+    redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379')
+    kv = redis.from_url(redis_url, decode_responses=True)
+    kv.ping()
+    print("Successfully connected to Redis.")
+except redis.exceptions.ConnectionError as e:
+    print(f"--- REDIS CONNECTION FAILED: {e} ---")
 
 app = Flask(__name__, static_url_path='', static_folder='.')
 
-def get_system_prompt():
-    """Generates the static system prompt for the AI."""
-    return "\n\n".join([
+def prepare_prompt(user_data, enrollment_data=None):
+    user_info = user_data.get('rawText', '')
+    province = user_data.get('province', '未知')
+    rank = user_data.get('rank', '未知')
+
+    # Base prompt structure
+    prompt_parts = [
         "你是一位顶级的、资深的、充满智慧的高考志愿填报专家。你的任务是为一位正在纠结中的高三学生或家长，提供一份专业、客观、有深度、有温度的志愿对比分析报告。",
         "**重要指令**: 在你输出最终的分析报告之前，请务必先进行一步深度思考。将你的思考过程、分析逻辑、以及数据检索的步骤，完整地包含在 `<think>` 和 `</think>` 标签之间。这部分内容是给专业用户看的，可以帮助他们理解你的决策过程。思考结束后，再输出面向用户的、完整的Markdown格式报告。",
+        "**学生背景:**",
+        f"- 省份: {province}",
+        f"- 分数/位次: {rank}",
+        "- 他的原始笔记和困惑如下:",
+        "---",
+        user_info,
+        "---"
+    ]
+
+    # Conditionally add enrollment data section
+    if enrollment_data and enrollment_data.get('data'):
+        enrollment_info = json.dumps(enrollment_data.get('data', {}), ensure_ascii=False, indent=2)
+        prompt_parts.extend([
+            "**参考数据 (2025年最新招生计划变动，你需要结合这份数据进行分析):**",
+            "---",
+            enrollment_info,
+            "---"
+        ])
+
+    # Add the rest of the prompt
+    prompt_parts.extend([
         "**你的任务和要求:**",
         "1.  **深度思考(在`<think>`标签内)**:",
         "    *   第一步: 识别用户的核心问题和纠结的点。",
-        "    *   第二步: 基于你掌握的知识，并结合用户提供的结构化参考数据（如招生计划、分数线等）进行分析。",
+        "    *   第二步: 检索并列出与用户方案相关的招生计划变动数据。" if enrollment_data else "    *   第二步: 基于你的知识库进行分析。",
         "    *   第三步: 设定评估维度，并简述每个维度的评估逻辑。",
         "2.  **正式报告(在`<think>`标签外)**:",
         "    *   **创建方案PK记分卡:** 这是报告的核心！请创建一个Markdown表格，从以下维度对核心方案进行对比打分（满分5星，用 ★★★☆☆ 表示）：录取概率、学校实力/声誉、专业前景/钱景、城市发展/生活品质、个人兴趣/困惑匹配度。",
@@ -196,32 +72,7 @@ def get_system_prompt():
         "- 正式报告**必须**是完整的Markdown格式。",
         "- 正式报告**必须**包含“方案PK记- 记分卡”表格。"
     ])
-
-def prepare_user_prompt(user_data, score_data=None):
-    """Prepares the user's input part of the prompt."""
-    user_info = user_data.get('rawText', '')
-    province = user_data.get('province', '未知')
-    rank = user_data.get('rank', '未知')
-
-    prompt_parts = [
-        "**学生背景:**",
-        f"- 省份: {province}",
-        f"- 分数/位次: {rank}",
-        "- 他本次的原始笔记和困惑如下:",
-        "---",
-        user_info,
-        "---"
-    ]
     
-    if score_data:
-        score_info = json.dumps(score_data, ensure_ascii=False, indent=2)
-        prompt_parts.extend([
-            "**参考数据 (历年分数线):**",
-            "---",
-            score_info,
-            "---"
-        ])
-
     return "\n\n".join(prompt_parts)
 
 # --- Static File Routes ---
@@ -240,68 +91,47 @@ def serve_static(path):
 # --- API Routes ---
 @app.route('/api/usage', methods=['GET'])
 def get_usage():
+    if not kv:
+        return jsonify({"used": "N/A", "limit": "N/A", "error": "数据库未连接"}), 500
     try:
-        current_usage = get_current_usage()
+        current_usage = int(kv.get(get_daily_key()) or 0)
         return jsonify({"used": current_usage, "limit": DAILY_LIMIT})
     except Exception as e:
         return jsonify({"used": "N/A", "limit": "N/A", "error": str(e)}), 500
 
-@app.route('/api/verify_code', methods=['POST'])
-def verify_code():
-    body = request.get_json(silent=True)
-    if not body or 'invitationCode' not in body:
-        return jsonify({"success": False, "error": "无效的请求格式。"}), 400
-    
-    invitation_code = body.get('invitationCode')
-    if invitation_code in valid_invitation_codes:
-        return jsonify({"success": True})
-    else:
-        return jsonify({"success": False, "error": "无效的邀请码。"}), 403
-
 @app.route('/api/handler', methods=['POST'])
 def handler():
-    # --- Security & Rate Limiting ---
-    body = request.get_json(silent=True)
-    if not body:
-        return jsonify({"error": "无效的请求格式。"}), 400
-
-    # 1. Invitation Code Check
-    invitation_code = body.get('invitationCode')
-    if not invitation_code or invitation_code not in valid_invitation_codes:
-        return jsonify({"error": "无效的邀请码。"}), 403
-
-    # 2. IP-based Rate Limiting
-    client_ip = request.remote_addr
-    if check_rate_limit(client_ip):
-        return jsonify({"error": "您的请求过于频繁，请稍后再试。"}), 429
-
-    # 3. Daily Usage Limit
-    try:
-        current_usage = get_current_usage()
-        if current_usage >= DAILY_LIMIT:
-            error_msg = {"error": f"非常抱歉，今日的免费体验名额（{DAILY_LIMIT}次）已被抢完！请您明日再来。"}
-            return jsonify({**error_msg, "usage": {"used": current_usage, "limit": DAILY_LIMIT}}), 429
-    except Exception as e:
-        print(f"Error during usage check: {e}")
-        pass # Allow to proceed if usage check fails, but log it.
-
+    # --- Cost Control & Safety Check ---
+    if kv:
+        try:
+            current_usage = int(kv.get(get_daily_key()) or 0)
+            if current_usage >= DAILY_LIMIT:
+                error_msg = {"error": f"非常抱歉，今日的免费体验名额（{DAILY_LIMIT}次）已被抢完！请您明日再来。"}
+                return jsonify({**error_msg, "usage": {"used": current_usage, "limit": DAILY_LIMIT}}), 429
+        except redis.exceptions.ConnectionError:
+            return jsonify({"error": "数据库连接丢失，请联系管理员。"}), 500
+    
     # --- Main Logic ---
     try:
-        if 'userInput' not in body:
+        body = request.get_json(silent=True)
+        if not body or 'userInput' not in body:
             return jsonify({"error": "请求格式错误或缺少'userInput'字段。"}), 400
-        
         user_data = body.get('userInput', {})
-        session_id = body.get('sessionId')
+
+        enrollment_data = None
+        load_data = os.environ.get("LOAD_ENROLLMENT_DATA", "false").lower() == "true"
+
+        if load_data:
+            try:
+                enrollment_data_path = os.path.join('_data', 'enrollment_data_2025.json')
+                with open(enrollment_data_path, 'r', encoding='utf-8') as f:
+                    enrollment_data = json.load(f)
+            except FileNotFoundError:
+                # If the file is not found but loading is requested, we can choose to ignore or log it.
+                # For now, we'll just proceed without the data.
+                print("Warning: LOAD_ENROLLMENT_DATA is true, but enrollment_data_2025.json was not found.")
         
-        # Load history if session_id is provided
-        history = []
-        if session_id:
-            history = load_session_history(session_id)
-
-        # Load score data
-        score_data = load_score_data(user_data.get('province'), user_data.get('stream'))
-
-        user_prompt = prepare_user_prompt(user_data, score_data)
+        prompt = prepare_prompt(user_data, enrollment_data)
 
     except FileNotFoundError:
         return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
@@ -312,17 +142,10 @@ def handler():
 
     def stream_response(p):
         try:
-            # --- Update usage and prepare for streaming ---
-            new_usage = increment_usage()
-            yield f"event: usage\ndata: {json.dumps({'used': new_usage, 'limit': DAILY_LIMIT})}\n\n"
+            if kv:
+                new_usage = kv.incr(get_daily_key())
+                yield f"event: usage\ndata: {json.dumps({'used': new_usage, 'limit': DAILY_LIMIT})}\n\n"
 
-            # --- Prepare messages for OpenAI API, including history ---
-            system_prompt = get_system_prompt()
-            messages_for_api = [{"role": "system", "content": system_prompt}]
-            messages_for_api.extend(history[-CONTEXT_TURNS*2:])
-            messages_for_api.append({"role": "user", "content": user_prompt})
-
-            # --- Stream response from OpenAI ---
             api_key = os.environ.get("OPENAI_API_KEY")
             base_url = os.environ.get("OPENAI_API_BASE")
             if not api_key or not base_url:
@@ -334,33 +157,16 @@ def handler():
             model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
             
             stream = client.chat.completions.create(
-                messages=messages_for_api,
+                messages=[{"role": "user", "content": p}],
                 model=model_name,
                 stream=True
             )
 
-            # --- Handle streaming and save history ---
-            assistant_response_full = ""
             for chunk in stream:
                 content = chunk.choices[0].delta.content
                 if content:
-                    assistant_response_full += content
                     yield f"event: message\ndata: {json.dumps(content)}\n\n"
             
-            if session_id:
-                # Strip the <think> block before saving to history
-                assistant_response_clean = assistant_response_full
-                think_start = assistant_response_full.find('<think>')
-                think_end = assistant_response_full.find('</think>')
-                if think_start != -1 and think_end != -1:
-                    assistant_response_clean = assistant_response_full[think_end + len('</think>'):].strip()
-
-                new_history = history + [
-                    {"role": "user", "content": user_data.get('rawText', '')},
-                    {"role": "assistant", "content": assistant_response_clean}
-                ]
-                save_session_history(session_id, new_history)
-
             yield f"event: end\ndata: End of stream\n\n"
 
         except Exception as e:
@@ -369,9 +175,8 @@ def handler():
             error_message = { "error": f"服务器在与AI通信时发生错误: {e}", "traceback": error_trace }
             yield f"event: error\ndata: {json.dumps(error_message, ensure_ascii=False)}\n\n"
 
-    return Response(stream_response(user_prompt), mimetype='text/event-stream')
+    return Response(stream_response(prompt), mimetype='text/event-stream')
 
 if __name__ == "__main__":
-    load_or_initialize_data()
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
