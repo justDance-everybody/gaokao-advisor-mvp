@@ -1,0 +1,87 @@
+name: Run App
+
+on:
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  run-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: docker build -t gaokao-advisor .
+
+      - name: Download and setup ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install ngrok
+
+      - name: Authenticate ngrok
+        run: ngrok config add-authtoken ${{ secrets.NGROK_AUTHTOKEN }}
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+
+      - name: Run Docker container and expose with ngrok
+        id: run_app
+        env:
+          # These secrets must be configured in your repository settings
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          DAILY_LIMIT: ${{ secrets.DAILY_LIMIT }}
+          LOAD_ENROLLMENT_DATA: "true"
+          PORT: 5000
+        run: |
+          # Run the Docker container in detached mode
+          # We mount the _data directory to allow the app to write back to the host
+          docker run -d --name gaokao-app \
+            -v $(pwd)/_data:/app/_data \
+            -v $(pwd)/sessions:/app/sessions \
+            -e PORT=${PORT} \
+            -e OPENAI_API_KEY=${OPENAI_API_KEY} \
+            -e OPENAI_API_BASE=${OPENAI_API_BASE} \
+            -e DAILY_LIMIT=${DAILY_LIMIT:-100} \
+            -e LOAD_ENROLLMENT_DATA=${LOAD_ENROLLMENT_DATA} \
+            -p ${PORT}:${PORT} \
+            gaokao-advisor
+
+          # Wait a few seconds for the container to start
+          sleep 10
+
+          # Start ngrok tunnel to expose the container's port
+          ngrok http ${PORT} --log=stdout > ngrok.log &
+          sleep 5
+
+          # Extract the public URL from the ngrok log and print it
+          echo "----------------------------------------------------------------"
+          echo "Your temporary URL is:"
+          grep -o 'url=https://[a-zA-Z0-9.-]*\.ngrok-free\.app' ngrok.log | sed 's/url=//'
+          echo "----------------------------------------------------------------"
+          echo "NOTE: This job will be terminated after a few hours."
+          echo "This is NOT a real hosting solution."
+          # Keep the job alive. We use a timeout on the step instead of sleep.
+          # This allows the subsequent steps to run even if this one is killed.
+          sleep 21000
+
+      - name: Commit and push usage data
+        # This step will always run, even if the previous step is cancelled or fails
+        if: always()
+        run: |
+          # Configure git
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions-bot@github.com'
+          
+          # Check if the usage file has changed
+          # Check if any tracked files have changed
+          if ! git diff --quiet _data/usage.json sessions/; then
+            echo "Data or session files have changed. Committing and pushing..."
+            git add _data/usage.json sessions/
+            # Use [skip ci] to prevent triggering a new workflow run
+            git commit -m "chore: Update usage and session data [skip ci]"
+            git push
+          else
+            echo "No changes in data files. Nothing to commit."
+          fi
