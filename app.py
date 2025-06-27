@@ -145,10 +145,13 @@ def save_session_history(session_id, history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def load_score_data(province, stream):
-    """Loads score line data for a given province and stream."""
-    if not LOAD_SCORE_DATA:
+    """
+    Loads score line data for a given province and stream from a single file
+    named after the province, e.g., '江苏.json'.
+    """
+    if not LOAD_SCORE_DATA or not province:
         return None
-    
+
     # For new gaokao, map to traditional streams
     if "物理" in stream:
         stream_key = "理科"
@@ -158,18 +161,22 @@ def load_score_data(province, stream):
         stream_key = stream
 
     score_data = {}
+    filepath = os.path.join(SCORE_LINES_DIR, f"{province}.json")
+
+    if not os.path.exists(filepath):
+        print(f"Score data file not found for province: {province}")
+        return None
+
     try:
-        for filename in os.listdir(SCORE_LINES_DIR):
-            if filename.endswith('.json'):
-                filepath = os.path.join(SCORE_LINES_DIR, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if data.get('province') == province:
-                        year = data.get('year', '未知年份')
-                        if stream_key in data.get('batches', {}):
-                            score_data[year] = data['batches'][stream_key]
-    except Exception as e:
-        print(f"Error loading score data: {e}")
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if data.get('province') == province:
+                for yearly_entry in data.get('yearly_data', []):
+                    year = yearly_entry.get('year', '未知年份')
+                    if stream_key in yearly_entry.get('batches', {}):
+                        score_data[year] = yearly_entry['batches'][stream_key]
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"Error loading or parsing score data for {province}: {e}")
     
     return score_data if score_data else None
 
@@ -182,19 +189,21 @@ def get_system_prompt():
         "你是一位顶级的、资深的、充满智慧的高考志愿填报专家。你的任务是为一位正在纠结中的高三学生或家长，提供一份专业、客观、有深度、有温度的志愿对比分析报告。",
         "**重要指令**: 在你输出最终的分析报告之前，请务必先进行一步深度思考。将你的思考过程、分析逻辑、以及数据检索的步骤，完整地包含在 `<think>` 和 `</think>` 标签之间。这部分内容是给专业用户看的，可以帮助他们理解你的决策过程。思考结束后，再输出面向用户的、完整的Markdown格式报告。",
         "**你的任务和要求:**",
-        "1.  **深度思考(在`<think>`标签内)**:",
+        "1.  **深度思考**:",
         "    *   第一步: 识别用户的核心问题和纠结的点。",
         "    *   第二步: 基于你掌握的知识，并结合用户提供的结构化参考数据（如招生计划、分数线等）进行分析。",
         "    *   第三步: 设定评估维度，并简述每个维度的评估逻辑。",
-        "2.  **正式报告(在`<think>`标签外)**:",
+        "2.  **正式报告**:",
         "    *   **创建方案PK记分卡:** 这是报告的核心！请创建一个Markdown表格，从以下维度对核心方案进行对比打分（满分5星，用 ★★★☆☆ 表示）：录取概率、学校实力/声誉、专业前景/钱景、城市发展/生活品质、个人兴趣/困惑匹配度。",
         "    *   **详细文字解读:** 针对记分卡中的每一项，展开详细的、有理有据的文字分析。",
         "    *   **“对话式”分析与建议:** 模拟与学生面对面对话的口吻，设身处地地理解他的困惑。",
         "    *   **最终结论总结:** 给出一个清晰的、总结性的结论。",
         "**输出格式要求:**",
         "- **必须**先输出`<think>`标签包裹的思考内容，然后再输出正式报告。",
+        "- **绝对禁止**在正式报告中重复或提及任何`<think>`标签内的思考过程。正式报告必须是直接面向最终用户的、干净的、独立的分析内容。",
         "- 正式报告**必须**是完整的Markdown格式。",
-        "- 正式报告**必须**包含“方案PK记- 记分卡”表格。"
+        "- 正式报告**必须**包含“方案PK记- 记分卡”表格。",
+        "- **格式示例**: `<think>这是我的思考过程...</think># 高考志愿对比分析报告\n## 方案PK记分卡\n| 评估维度 | ...`"
     ])
 
 def prepare_user_prompt(user_data, score_data=None):
@@ -292,16 +301,21 @@ def handler():
         
         user_data = body.get('userInput', {})
         session_id = body.get('sessionId')
+        is_follow_up = user_data.get('isFollowUp', False)
         
         # Load history if session_id is provided
         history = []
         if session_id:
             history = load_session_history(session_id)
 
-        # Load score data
-        score_data = load_score_data(user_data.get('province'), user_data.get('stream'))
-
-        user_prompt = prepare_user_prompt(user_data, score_data)
+        # If it's a follow-up, the prompt is just the raw text.
+        # Otherwise, prepare the full prompt with context.
+        if is_follow_up:
+            user_prompt = user_data.get('rawText', '')
+        else:
+            # Load score data only for initial requests
+            score_data = load_score_data(user_data.get('province'), user_data.get('stream'))
+            user_prompt = prepare_user_prompt(user_data, score_data)
 
     except FileNotFoundError:
         return jsonify({"error": "服务器内部错误：关键数据文件丢失。"}), 500
@@ -331,7 +345,7 @@ def handler():
                 return
             
             client = OpenAI(api_key=api_key, base_url=base_url)
-            model_name = os.environ.get("OPENAI_MODEL_NAME", "qwen3-30b-a3b")
+            model_name = os.environ.get("OPENAI_MODEL_NAME", "gemini-2.5-flash")
             
             stream = client.chat.completions.create(
                 messages=messages_for_api,

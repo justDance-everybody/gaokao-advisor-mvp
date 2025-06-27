@@ -4,7 +4,6 @@
 
 V1.1版本在原基础上，新增了**邀请码认证**、**多轮对话**、**动态数据加载**、**IP速率限制**等核心功能，并优化了部署方式，使其能够**完全在GitHub Actions的免费环境中运行**，实现了状态的持久化。同时仍然支持Docker部署。
 
----
 
 ![PC端演示](images/pc_2.png)
 ![移动端演示](images/mobile.jpg)
@@ -12,7 +11,7 @@ V1.1版本在原基础上，新增了**邀请码认证**、**多轮对话**、**
 
 ## ✨ V1.1 功能特性
 
-- **智能分析报告**:
+- **智能分析报告**: 
   - **个性化输入**: 用户可以输入省份、科类、分数/位次，以及最纠结的几个志愿方案和主要困惑。
   - **数据驱动**: 可选加载本地的历年分数线 (`_data/scorelines/`) 数据，为AI提供更精准的决策依据。
   - **深度思考过程**: 在生成报告前，AI会先输出一段被折叠的“思考过程”，展示其分析逻辑。
@@ -67,7 +66,7 @@ V1.1版本在原基础上，新增了**邀请码认证**、**多轮对话**、**
 │   └── run-app-on-actions.yml  # GitHub Actions工作流文件
 ├── _data/
 │   ├── scorelines/                # 历年分数线数据 (按省份年份存放)
-│   │   └── jiangsu_2024.json      # (示例文件)
+│   │   └── 江苏.json      # (示例文件)
 │   ├── usage.json                 # 每日用量计数器 (自动生成/更新)
 │   └── users.json                 # 有效邀请码列表
 ├── sessions/                        # 对话历史记录 (自动生成/更新)
@@ -77,6 +76,41 @@ V1.1版本在原基础上，新增了**邀请码认证**、**多轮对话**、**
 ```
 
 ---
+
+
+# 如何使用
+
+  项目使用集中的参数配置，使用Docker部署时所有参数均在.env文件中配置；使用Github Actions部署时为防止敏感配置泄露，所有参数使用 repository secret 配置。
+
+## 📂 如何配置邀请码
+
+本应用的访问是通过邀请码机制来控制的。您可以轻松地添加或修改有效的邀请码。
+
+1.  **找到用户文件**: 打开项目根目录下的 `_data/users.json` 文件。
+2.  **编辑邀请码列表**: 该文件包含一个名为 `valid_codes` 的JSON数组。您可以在这个数组中直接添加、删除或修改邀请码字符串。
+
+**示例 `_data/users.json` 文件:**
+```json
+{
+  "valid_codes": [
+    "GAOKAO_2025_VIP",
+    "TEST_CODE_123",
+    "ok"
+  ]
+}
+```
+- **添加**: 在数组末尾加入一个新的字符串，例如 `"NEW_CODE_456"`。
+- **删除**: 从数组中移除一个不再需要的字符串。
+
+**重要提示**:
+- 修改 `users.json` 文件后，如果应用正在运行，您**需要重启应用**（无论是重启Docker容器还是GitHub Actions工作流）才能使新的邀请码列表生效。
+- 如果您是在GitHub Actions上运行本项目，请记得将修改后的 `users.json` 文件 `git push` 到您的仓库中，以便下次工作流运行时能够加载到最新的配置。
+
+---
+
+## 📂 如何配置分数线文件
+
+见[_data/README.md](_data/README.md)中的详细说明
 
 ## 🚀 如何在 GitHub Actions 上运行
 
@@ -94,10 +128,24 @@ V1.1版本在原基础上，新增了**邀请码认证**、**多轮对话**、**
 1.  **`NGROK_AUTHTOKEN`**: (必需) 粘贴您从ngrok获取的Authtoken。
 2.  **`OPENAI_API_KEY`**: (必需) 您的AI服务API Key。
 3.  **`OPENAI_API_BASE`**: (必需) 您的AI服务API地址。
-4.  **`DAILY_LIMIT`**: (可选) 每日使用总次数上限，默认`100`。
+4.  **`OPENAI_MODEL_NAME`**: (可选) 指定使用的AI模型名称，默认`gemini-2.5-flash`。
+5.  **`DAILY_LIMIT`**: (可选) 每日使用总次数上限，默认`100`。
 5.  **`RATE_LIMIT_PER_MINUTE`**: (可选) 单IP每分钟请求上限，默认`10`。
 6.  **`CONTEXT_TURNS`**: (可选) AI记忆的上下文对话轮数，默认`3`。
 7.  **`LOAD_SCORE_DATA`**: (可选) 设为 `"true"` 来加载本地的历年分数线数据，默认`"true"`。
+
+&emsp;Github Actions Secrets最小化示例配置：
+```
+NGROK_AUTHTOKEN = 2z3U519yMIwxxxxxxxxxxxxxTWh_5GjRTTwge7SPPqnaHB96X
+
+OPENAI_API_KEY = xxxxxxxx
+
+OPENAI_API_BASE = https://xxxx.com/v1  
+#如果使用gemini系列模型，则需配置为 https://generativelanguage.googleapis.com/v1beta/openai/
+
+OPENAI_MODEL_NAME = gemini-2.5-pro
+
+```
 
 ### 运行步骤
 1.  **进入Actions页面**: 在您的仓库页面，点击 `Actions` 标签页。
@@ -113,11 +161,22 @@ https://xxxxx.ngrok-free.app`或进入[https://dashboard.ngrok.com/agents](https
 
 ---
 
-## 🐳 如何在本地Docker环境启动 (用于开发)
+##  如何在本地Docker环境启动 (用于开发)
 
 ### 前提
 1.  **安装 Docker Desktop**
-2.  **配置环境变量**: 复制 `.env.example` 为 `.env`，并填入您的 `OPENAI_API_KEY` 和 `OPENAI_API_BASE`等参数。**参数配置说明已在**`.env.example`**中提供**。
+2.  **配置环境变量**: 复制 `.env.example` 为 `.env`，并填入您的 参数。**完整参数配置说明已在**`.env.example`**中提供**。
+
+使用gemini-2.5-pro的最简.env文件示例：
+
+```
+OPENAI_API_KEY="xxxxx"
+
+OPENAI_API_BASE="https://generativelanguage.googleapis.com/v1beta/openai/"
+
+OPENAI_MODEL_NAME="gemini-2.5-pro"
+```
+只配置LLM参数的情况下，默认日限额100，上下文轮数3，单IP每分钟请求10，读取分数线文件。
 
 ### 一键启动
 在项目根目录下，打开终端并运行：
